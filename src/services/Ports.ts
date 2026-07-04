@@ -8,6 +8,7 @@ import { StateStore } from "./StateStore.js";
 type AllocateOptions = {
   readonly override?: number;
   readonly range?: readonly [number, number];
+  readonly reserved?: ReadonlySet<number>;
 };
 
 const canBind = (port: number) =>
@@ -64,6 +65,7 @@ export class Ports extends Context.Service<
             if (
               options.override < from ||
               options.override > to ||
+              options.reserved?.has(options.override) === true ||
               !(yield* canBind(options.override))
             ) {
               return yield* new NoFreePort({ from, to });
@@ -74,12 +76,7 @@ export class Ports extends Context.Service<
           const state = yield* stateStore.loadInstances().pipe(Effect.orDie);
           const instance = state.instances[instanceSlug];
           const existing = instance?.ports[routeName];
-          if (
-            existing !== undefined &&
-            existing >= from &&
-            existing <= to &&
-            (yield* canBind(existing))
-          ) {
+          if (existing !== undefined && existing >= from && existing <= to) {
             return existing;
           }
 
@@ -92,6 +89,7 @@ export class Ports extends Context.Service<
 
           for (let port = from; port <= to; port += 1) {
             if (recorded.has(port)) continue;
+            if (options.reserved?.has(port) === true) continue;
             if (yield* canBind(port)) return port;
           }
           return yield* new NoFreePort({ from, to });

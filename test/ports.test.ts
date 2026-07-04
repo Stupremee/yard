@@ -85,6 +85,25 @@ describe("Ports", () => {
     ),
   );
 
+  it.effect("reuses an existing bound port for the same instance route", () =>
+    withTempXdg(
+      Effect.gen(function* () {
+        const store = yield* StateStore;
+        yield* store.saveGlobalConfig(globalConfig([3100, 3105]));
+        yield* store.saveInstances(
+          new InstancesFile({ version: 1, instances: { yard: instance({ web: 3102 }) } }),
+        );
+        yield* Effect.scoped(
+          Effect.gen(function* () {
+            yield* occupy(3102);
+            const ports = yield* Ports;
+            expect(yield* ports.allocate("yard", "web")).toBe(3102);
+          }),
+        );
+      }).pipe(Effect.provide(testLayer)),
+    ),
+  );
+
   it.effect("skips ports recorded by other instances", () =>
     withTempXdg(
       Effect.gen(function* () {

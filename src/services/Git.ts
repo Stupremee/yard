@@ -103,25 +103,32 @@ export class Git extends Context.Service<
         args: ReadonlyArray<string>,
         cwd?: string,
       ) {
-        const command = ChildProcess.make("git", [...args], cwd === undefined ? {} : { cwd });
-        const handle = yield* spawner.spawn(command).pipe(Effect.scoped);
-        const stdout = yield* decodeStream(handle.stdout).pipe(
-          Effect.mapError((error) => ({ error })),
+        return yield* Effect.scoped(
+          Effect.gen(function* () {
+            const command =
+              cwd === undefined
+                ? ChildProcess.make("git", [...args])
+                : ChildProcess.make("git", [...args]).pipe(ChildProcess.setCwd(cwd));
+            const handle = yield* spawner.spawn(command);
+            const stdout = yield* decodeStream(handle.stdout).pipe(
+              Effect.mapError((error) => ({ error })),
+            );
+            const stderr = yield* decodeStream(handle.stderr).pipe(
+              Effect.mapError((error) => ({ error })),
+            );
+            const exitCode = yield* handle.exitCode.pipe(Effect.mapError((error) => ({ error })));
+            if (exitCode !== ChildProcessSpawner.ExitCode(0)) {
+              return yield* new ProcessFailed({
+                command: "git",
+                args: [...args],
+                cwd,
+                exitCode: Number(exitCode),
+                stderr,
+              });
+            }
+            return stdout.trim();
+          }),
         );
-        const stderr = yield* decodeStream(handle.stderr).pipe(
-          Effect.mapError((error) => ({ error })),
-        );
-        const exitCode = yield* handle.exitCode.pipe(Effect.mapError((error) => ({ error })));
-        if (exitCode !== ChildProcessSpawner.ExitCode(0)) {
-          return yield* new ProcessFailed({
-            command: "git",
-            args: [...args],
-            cwd,
-            exitCode: Number(exitCode),
-            stderr,
-          });
-        }
-        return stdout.trim();
       });
       const gitStringSafe = (args: ReadonlyArray<string>, cwd: string) =>
         gitString(args, cwd).pipe(
@@ -150,7 +157,7 @@ export class Git extends Context.Service<
             Effect.mapError((error) => new NotAGitRepo({ cwd, message: error.stderr })),
           );
           if (inside !== "true") {
-            return yield* new NotAGitRepo({ cwd });
+            return yield* new NotAGitRepo({ cwd, message: `rev-parse returned ${inside}` });
           }
           return yield* gitStringSafe(["rev-parse", "--show-toplevel"], cwd);
         }),

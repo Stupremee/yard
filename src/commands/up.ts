@@ -125,23 +125,72 @@ export const summaryLines = (summary: LifecycleSummary): ReadonlyArray<string> =
 const failInvalid = (message: string) =>
   new ConfigInvalid({ path: "repo config", error: new Error(message) });
 
-const allocatePorts = Effect.fn("commands.lifecycle.allocatePorts")(function* (
+export const allocatePorts = Effect.fn("commands.lifecycle.allocatePorts")(function* (
   slug: string,
   config: RepoConfig,
   globalConfig: GlobalConfig,
   override: number | undefined,
 ) {
   const ports = yield* Ports;
+  const store = yield* StateStore;
   const plan = buildPortPlan(config);
+  const state = yield* store.loadInstances();
+  const instance = state.instances[slug];
+  const [from, to] = globalConfig.portRange;
+  const reserved = new Set<number>();
+  for (const [instanceSlug, other] of Object.entries(state.instances)) {
+    for (const [routeName, portNumber] of Object.entries(other.ports)) {
+      if (instanceSlug === slug && routeName === plan.routedProcess && override !== undefined) {
+        continue;
+      }
+      reserved.add(portNumber);
+    }
+  }
   const allocated: Record<string, number> = {};
-  allocated[plan.routedProcess] = yield* ports.allocate(slug, plan.routedProcess, {
-    ...(override === undefined ? {} : { override }),
-    range: globalConfig.portRange,
-  });
-  for (const route of plan.routePorts) {
-    allocated[route.route] = yield* ports.allocate(slug, route.route, {
-      range: globalConfig.portRange,
+
+  const choosePort = Effect.fn("commands.lifecycle.allocatePorts.choosePort")(function* (
+    routeName: string,
+    requested: number | undefined,
+  ) {
+    const existing = instance?.ports[routeName];
+    if (requested !== undefined) {
+      if (requested < from || requested > to || reserved.has(requested)) {
+        return yield* new ConfigInvalid({
+          path: "repo config",
+          error: new Error(`Port ${requested} is not available in range ${from}-${to}`),
+        });
+      }
+      if (existing === requested || (yield* ports.isUsable(requested))) {
+        reserved.add(requested);
+        return requested;
+      }
+      return yield* new ConfigInvalid({
+        path: "repo config",
+        error: new Error(`Port ${requested} is already in use`),
+      });
+    }
+
+    if (existing !== undefined && existing >= from && existing <= to) {
+      reserved.add(existing);
+      return existing;
+    }
+
+    for (let portNumber = from; portNumber <= to; portNumber += 1) {
+      if (reserved.has(portNumber)) continue;
+      if (yield* ports.isUsable(portNumber)) {
+        reserved.add(portNumber);
+        return portNumber;
+      }
+    }
+    return yield* new ConfigInvalid({
+      path: "repo config",
+      error: new Error(`No free ports in range ${from}-${to}`),
     });
+  });
+
+  allocated[plan.routedProcess] = yield* choosePort(plan.routedProcess, override);
+  for (const route of plan.routePorts) {
+    allocated[route.route] = yield* choosePort(route.route, undefined);
   }
   return allocated;
 });
@@ -207,6 +256,7 @@ export const startInstanceUnits = Effect.fn("commands.lifecycle.startInstanceUni
   config: RepoConfig,
   globalConfig: GlobalConfig,
   instance: Instance,
+  forceRestart = false,
 ) {
   const systemd = yield* Systemd;
   const plan = buildPortPlan(config);
@@ -223,7 +273,11 @@ export const startInstanceUnits = Effect.fn("commands.lifecycle.startInstanceUni
   }
   yield* systemd.daemonReload();
   for (const unit of instanceUnits(context.slug, instance.processes)) {
-    yield* systemd.start(unit);
+    if (forceRestart) {
+      yield* systemd.restart(unit);
+    } else {
+      yield* systemd.start(unit);
+    }
   }
 });
 
@@ -265,7 +319,13 @@ const runUp = Effect.fn("commands.up.run")(function* (options: {
         primaryRoot: context.primaryRoot,
         env: config.env,
       });
-      yield* startInstanceUnits(context, config, globalConfig, instance);
+      yield* startInstanceUnits(
+        context,
+        config,
+        globalConfig,
+        instance,
+        Option.isSome(options.port),
+      );
       yield* caddy.syncConfig(globalConfig, {
         ...nextState.instances,
         [context.slug]: { instance, running: true },

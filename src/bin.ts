@@ -61,26 +61,7 @@ const appLayer = Layer.merge(
 );
 
 const outputLayer = Output.layer(process.argv.includes("--json"));
-const infoLayer = Layer.merge(
-  outputLayer,
-  Layer.merge(
-    FetchHttpClient.layer,
-    Layer.merge(Git.layer, Layer.merge(stateStoreLayer, Layer.merge(systemdLayer, caddyLayer))),
-  ),
-);
-const daemonLayer = Layer.merge(outputLayer, systemdLayer);
-const setupLayer = Layer.merge(
-  outputLayer,
-  Layer.merge(
-    FetchHttpClient.layer,
-    Layer.merge(
-      stateStoreLayer,
-      Layer.merge(systemdLayer, Layer.merge(caddyLayer, Layer.merge(binariesLayer, tunnelLayer))),
-    ),
-  ),
-);
-const lifecycleLayer = Layer.merge(outputLayer, appLayer);
-const doctorPreflightLayer = Layer.merge(outputLayer, stateStoreLayer);
+const completeAppLayer = Layer.merge(outputLayer, Layer.merge(FetchHttpClient.layer, appLayer));
 
 const provideWith = <CommandValue, LayerOut, LayerError, LayerIn>(
   command: CommandValue,
@@ -91,31 +72,25 @@ const root = Command.make("yard").pipe(
   Command.withSharedFlags({ json }),
   Command.withDescription("Manage AI-assisted development environments"),
   Command.withSubcommands([
-    provideWith(upCommand, lifecycleLayer),
-    provideWith(downCommand, infoLayer),
-    provideWith(restartCommand, infoLayer),
-    provideWith(rmCommand, infoLayer),
-    provideWith(statusCommand, infoLayer),
-    provideWith(listCommand, infoLayer),
-    provideWith(
-      logsCommand,
-      Layer.merge(outputLayer, Layer.merge(Git.layer, Layer.merge(stateStoreLayer, systemdLayer))),
-    ),
-    provideWith(urlCommand, Layer.merge(outputLayer, Layer.merge(Git.layer, stateStoreLayer))),
-    provideWith(
-      envCommand,
-      Layer.merge(
-        outputLayer,
-        Layer.merge(Git.layer, Layer.merge(stateStoreLayer, EnvLinker.layer)),
-      ),
-    ),
-    provideWith(initCommand, setupLayer),
-    provideWith(doctorCommand, doctorPreflightLayer),
-    provideWith(caddyCommand, daemonLayer),
-    provideWith(tunnelCommand, daemonLayer),
+    provideWith(upCommand, completeAppLayer),
+    provideWith(downCommand, completeAppLayer),
+    provideWith(restartCommand, completeAppLayer),
+    provideWith(rmCommand, completeAppLayer),
+    provideWith(statusCommand, completeAppLayer),
+    provideWith(listCommand, completeAppLayer),
+    provideWith(logsCommand, completeAppLayer),
+    provideWith(urlCommand, completeAppLayer),
+    provideWith(envCommand, completeAppLayer),
+    provideWith(initCommand, completeAppLayer),
+    provideWith(doctorCommand, completeAppLayer),
+    provideWith(caddyCommand, completeAppLayer),
+    provideWith(tunnelCommand, completeAppLayer),
     provideWith(printViteConfigCommand, outputLayer),
   ]),
 );
+
+const providedRoot = root.pipe(Command.provide(completeAppLayer));
+const runtimeLayer = Layer.merge(FetchHttpClient.layer, NodeServices.layer);
 
 const errorPayload = (error: unknown) => {
   if (typeof error === "object" && error !== null && "_tag" in error) {
@@ -158,13 +133,7 @@ const renderFailure = (jsonMode: boolean, error: unknown) =>
     process.stderr.write(text.endsWith("\n") ? text : `${text}\n`);
   });
 
-const mainUnchecked = Command.run(root, { version: pkg.version }).pipe(
-  Effect.provide(NodeServices.layer),
-  // The v4 beta layer types currently retain some services that are provided by sibling layers.
-);
-
-// @effect-diagnostics-next-line unsafeEffectTypeAssertion:off
-const main = mainUnchecked as Effect.Effect<void, never, never>;
+const main = Command.run(providedRoot, { version: pkg.version }).pipe(Effect.provide(runtimeLayer));
 
 main.pipe(
   Effect.catchCause((cause) => {
