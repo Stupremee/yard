@@ -138,6 +138,11 @@ export class Systemd extends Context.Service<
     readonly restart: (unit: string) => Effect.Effect<void, ProcessFailed>;
     readonly enable: (unit: string) => Effect.Effect<void, ProcessFailed>;
     readonly disable: (unit: string) => Effect.Effect<void, ProcessFailed>;
+    readonly resetFailed: (unit: string) => Effect.Effect<void, ProcessFailed>;
+    readonly removeAppDropins: (
+      slug: string,
+      processes: ReadonlyArray<string>,
+    ) => Effect.Effect<void, PlatformError.PlatformError>;
     readonly isActive: (unit: string) => Effect.Effect<boolean, ProcessFailed>;
     readonly show: (unit: string) => Effect.Effect<Readonly<Record<string, string>>, ProcessFailed>;
     readonly listYardUnits: () => Effect.Effect<ReadonlyArray<string>, ProcessFailed>;
@@ -283,6 +288,21 @@ export class Systemd extends Context.Service<
         }),
         disable: Effect.fn("Systemd.disable")(function* (unit: string) {
           yield* systemctl(["disable", unit]);
+        }),
+        resetFailed: Effect.fn("Systemd.resetFailed")(function* (unit: string) {
+          yield* systemctl(["reset-failed", unit]);
+        }),
+        removeAppDropins: Effect.fn("Systemd.removeAppDropins")(function* (
+          slug: string,
+          processes: ReadonlyArray<string>,
+        ) {
+          const dir = yield* userUnitDir();
+          for (const processName of processes) {
+            yield* fs.remove(path.join(dir, appDropinDirectoryName(slug, processName)), {
+              recursive: true,
+              force: true,
+            });
+          }
         }),
         isActive: Effect.fn("Systemd.isActive")(function* (unit: string) {
           return (

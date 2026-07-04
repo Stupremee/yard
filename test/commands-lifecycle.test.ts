@@ -18,7 +18,7 @@ const globalConfig = new GlobalConfig({
 });
 
 describe("command lifecycle helpers", () => {
-  it("builds a stable port plan with the routed process mapped to web", () => {
+  it("builds a stable port plan keyed by the routed process name", () => {
     const config = new RepoConfig({
       processes: {
         convex: new ProcessSpec({ command: "convex dev" }),
@@ -40,7 +40,6 @@ describe("command lifecycle helpers", () => {
 
     expect(buildPortPlan(config)).toEqual({
       routedProcess: "app",
-      routedPortKey: "web",
       routePorts: [
         {
           route: "api",
@@ -93,6 +92,7 @@ describe("command lifecycle helpers", () => {
       primaryRoot: "/repo/main",
       ports: { web: 3100, convex: 3101 },
       processes: ["convex", "web"],
+      routedProcess: "web",
       createdAt: "2026-01-01T00:00:00.000Z",
       updatedAt: "2026-01-01T00:00:00.000Z",
     });

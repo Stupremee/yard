@@ -19,7 +19,7 @@ const globalConfig = new GlobalConfig({
   tunnel: { name: "yard", id: "uuid", credentialsFile: "creds.json" },
 });
 
-const instance = (ports: Record<string, number>) =>
+const instance = (ports: Record<string, number>, routedProcess = "web") =>
   new Instance({
     repoName: "app",
     word: null,
@@ -27,6 +27,7 @@ const instance = (ports: Record<string, number>) =>
     primaryRoot: "/repo",
     ports,
     processes: ["web"],
+    routedProcess,
     createdAt: "2026-07-04T00:00:00.000Z",
     updatedAt: "2026-07-04T00:00:00.000Z",
   });
@@ -118,6 +119,21 @@ describe("generateCaddyConfig", () => {
       "app-convex-site.example.test",
       undefined,
     ]);
+  });
+
+  it("uses routedProcess for the primary hostname instead of assuming web", () => {
+    const config = generateCaddyConfig(globalConfig, {
+      app: instance({ app: 3100, convex: 3210 }, "app"),
+    });
+    expect(routesOf(config).map((route) => route.match?.[0]?.host[0])).toEqual([
+      "app.example.test",
+      "app-convex.example.test",
+      undefined,
+    ]);
+    expect(firstHandler(config, 0)).toEqual({
+      handler: "reverse_proxy",
+      upstreams: [{ dial: "127.0.0.1:3100" }],
+    });
   });
 
   it("serves a friendly stopped page for stopped instances", () => {

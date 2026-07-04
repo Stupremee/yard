@@ -124,13 +124,13 @@ const resolveDns = (host: string) =>
   });
 
 export const collectDoctorChecks = Effect.fn("commands.doctor.collectDoctorChecks")(function* () {
-  const binaries = yield* Binaries;
-  const caddy = yield* Caddy;
   const fs = yield* FileSystem.FileSystem;
   const state = yield* StateStore;
+  const config = yield* state.loadGlobalConfig();
+  const binaries = yield* Binaries;
+  const caddy = yield* Caddy;
   const systemd = yield* Systemd;
   const tunnel = yield* Tunnel;
-  const config = yield* state.loadGlobalConfig();
 
   return yield* Effect.all(
     [

@@ -70,7 +70,7 @@ export const shapeInstanceStatus = (input: {
     .sort(([left], [right]) => left.localeCompare(right))
     .map(([name, port]) => {
       const host =
-        name === "web"
+        name === input.instance.routedProcess
           ? primaryHostname(input.slug, input.zone)
           : routeHostname(input.slug, name, input.zone);
       return { name, host, port, present: input.caddyHosts.has(host) };

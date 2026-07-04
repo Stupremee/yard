@@ -112,7 +112,7 @@ export const generateCaddyConfig = (
   const routes: Array<CaddyRoute> = [];
   for (const [slug, rawState] of sortedEntries(instances)) {
     const state = normalizeInstanceState(rawState);
-    const primaryPort = state.instance.ports.web;
+    const primaryPort = state.instance.ports[state.instance.routedProcess];
     if (primaryPort !== undefined) {
       const host = primaryHostname(slug, globalConfig.zone);
       routes.push(
@@ -124,7 +124,7 @@ export const generateCaddyConfig = (
     }
 
     for (const [route, port] of sortedEntries(state.instance.ports)) {
-      if (route === "web") {
+      if (route === state.instance.routedProcess) {
         continue;
       }
       const host = routeHostname(slug, route, globalConfig.zone);

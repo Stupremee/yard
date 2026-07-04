@@ -20,7 +20,6 @@ import { resolveContext, type InstanceContext } from "./context.js";
 
 export type PortPlan = {
   readonly routedProcess: string;
-  readonly routedPortKey: "web";
   readonly routePorts: ReadonlyArray<{
     readonly route: string;
     readonly process: string;
@@ -59,7 +58,6 @@ export const routedProcessName = (config: RepoConfig): string => {
 
 export const buildPortPlan = (config: RepoConfig): PortPlan => ({
   routedProcess: routedProcessName(config),
-  routedPortKey: "web",
   routePorts: Object.entries(config.routes)
     .sort(([left], [right]) => left.localeCompare(right))
     .map(([route, spec]) => ({
@@ -78,7 +76,7 @@ export const buildProcessEnvironment = (
 ): Readonly<Record<string, string | number>> => {
   const environment: Record<string, string | number> = {
     DEV_HOST: primaryHostname(slug, globalConfig.zone),
-    PORT: ports[plan.routedPortKey] ?? "",
+    PORT: ports[plan.routedProcess] ?? "",
   };
   for (const route of plan.routePorts) {
     const routePort = ports[route.route];
@@ -136,7 +134,7 @@ const allocatePorts = Effect.fn("commands.lifecycle.allocatePorts")(function* (
   const ports = yield* Ports;
   const plan = buildPortPlan(config);
   const allocated: Record<string, number> = {};
-  allocated[plan.routedPortKey] = yield* ports.allocate(slug, plan.routedPortKey, {
+  allocated[plan.routedProcess] = yield* ports.allocate(slug, plan.routedProcess, {
     ...(override === undefined ? {} : { override }),
     range: globalConfig.portRange,
   });
@@ -165,6 +163,7 @@ const adoptOrCreateInstance = Effect.fn("commands.lifecycle.adoptOrCreateInstanc
     primaryRoot: context.primaryRoot,
     ports: allocated,
     processes: Object.keys(config.processes).sort((left, right) => left.localeCompare(right)),
+    routedProcess: buildPortPlan(config).routedProcess,
     visibility:
       existing?.visibility ?? (globalConfig.auth.mode === "public" ? "public" : "protected"),
     createdAt: existing?.createdAt ?? timestamp,
@@ -272,7 +271,7 @@ const runUp = Effect.fn("commands.up.run")(function* (options: {
         [context.slug]: { instance, running: true },
       });
 
-      const routedPort = instance.ports.web;
+      const routedPort = instance.ports[instance.routedProcess];
       if (routedPort === undefined) {
         return yield* failInvalid(`Instance ${context.slug} has no routed port`);
       }

@@ -1,6 +1,7 @@
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import { Command, Flag } from "effect/unstable/cli";
+import { Output } from "../services/Output.js";
 import { appUnitName } from "../services/Systemd.js";
 import { Systemd } from "../services/Systemd.js";
 import { lookupInstance, resolveContext } from "./context.js";
@@ -28,13 +29,21 @@ export const logsCommand = Command.make(
     const context = yield* resolveContext();
     const instance = yield* lookupInstance(context.slug);
     const systemd = yield* Systemd;
+    const output = yield* Output;
     const processName = selectLogProcess(
       instance.processes,
       instance.ports,
       Option.getOrUndefined(requestedProcess),
     );
     const unit = appUnitName(context.slug, processName);
+    const isJson = yield* output.isJson();
     if (follow) {
+      if (isJson) {
+        yield* output.emit({
+          json: { slug: context.slug, process: processName, unit, follow: true, lines },
+          human: "",
+        });
+      }
       yield* systemd.journalFollow({ unit, lines }, (chunk) =>
         Effect.sync(() => {
           process.stdout.write(chunk);
@@ -43,9 +52,18 @@ export const logsCommand = Command.make(
       return;
     }
     const result = yield* systemd.journal({ unit, lines });
-    yield* Effect.sync(() => {
-      if (result.stdout.length > 0) process.stdout.write(result.stdout);
-      if (result.stderr.length > 0) process.stderr.write(result.stderr);
+    yield* output.emit({
+      json: {
+        slug: context.slug,
+        process: processName,
+        unit,
+        follow: false,
+        lines,
+        stdout: result.stdout,
+        stderr: result.stderr,
+        exitCode: result.exitCode,
+      },
+      human: result.stdout.length > 0 ? result.stdout : result.stderr,
     });
   }),
 ).pipe(Command.withDescription("Show journald logs for a yard app process"));

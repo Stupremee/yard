@@ -1,6 +1,6 @@
 import * as Effect from "effect/Effect";
 import { Command, Flag } from "effect/unstable/cli";
-import { ConfigInvalid } from "../domain/errors.js";
+import { ConfigInvalid, InstanceNotFound } from "../domain/errors.js";
 import { Caddy } from "../services/Caddy.js";
 import { Lock } from "../services/Lock.js";
 import { Output } from "../services/Output.js";
@@ -27,10 +27,7 @@ const runRestart = Effect.fn("commands.restart.run")(function* (options: {
       const state = yield* store.loadInstances();
       const instance = state.instances[context.slug];
       if (instance === undefined) {
-        return yield* new ConfigInvalid({
-          path: "instances.json",
-          error: new Error(`Unknown yard instance: ${context.slug}`),
-        });
+        return yield* new InstanceNotFound({ slug: context.slug });
       }
       for (const unit of instanceUnits(context.slug, instance.processes)) {
         yield* systemd.restart(unit);
@@ -39,7 +36,7 @@ const runRestart = Effect.fn("commands.restart.run")(function* (options: {
         ...state.instances,
         [context.slug]: { instance, running: true },
       });
-      const routedPort = instance.ports.web;
+      const routedPort = instance.ports[instance.routedProcess];
       if (routedPort === undefined) {
         return yield* new ConfigInvalid({
           path: "instances.json",

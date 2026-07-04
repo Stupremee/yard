@@ -99,6 +99,10 @@ export class Instance extends Schema.Class<Instance>("Instance")({
   primaryRoot: Schema.String,
   ports: Schema.Record(Schema.String, Schema.Finite),
   processes: Schema.Array(Schema.String),
+  routedProcess: Schema.String.pipe(
+    Schema.withDecodingDefault(Effect.succeed("web")),
+    Schema.withConstructorDefault(Effect.succeed("web")),
+  ),
   visibility: Schema.Literals(["protected", "public"]).pipe(
     Schema.withDecodingDefault(Effect.succeed("public" as const)),
     Schema.withConstructorDefault(Effect.succeed("public" as const)),

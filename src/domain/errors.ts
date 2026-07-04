@@ -35,6 +35,13 @@ export class ConfigInvalid extends Schema.TaggedErrorClass<ConfigInvalid>()("Con
   error: Schema.Unknown,
 }) {}
 
+export class InstanceNotFound extends Schema.TaggedErrorClass<InstanceNotFound>()(
+  "InstanceNotFound",
+  {
+    slug: Schema.String,
+  },
+) {}
+
 export class ProcessFailed extends Schema.TaggedErrorClass<ProcessFailed>()("ProcessFailed", {
   command: Schema.String,
   args: Schema.Array(Schema.String),

@@ -1,5 +1,5 @@
 import * as Effect from "effect/Effect";
-import { ConfigInvalid, NotAGitRepo } from "../domain/errors.js";
+import { InstanceNotFound, NotAGitRepo } from "../domain/errors.js";
 import { Instance } from "../domain/model.js";
 import { composeInstanceSlug, slugifyRepoName } from "../domain/slug.js";
 import { pickWord } from "../domain/wordlist.js";
@@ -72,10 +72,7 @@ export const lookupInstance = Effect.fn("commands.context.lookupInstance")(funct
   const state = yield* store.loadInstances();
   const instance = state.instances[slug];
   if (instance === undefined) {
-    return yield* new ConfigInvalid({
-      path: "instances.json",
-      error: new Error(`Unknown yard instance: ${slug}`),
-    });
+    return yield* new InstanceNotFound({ slug });
   }
   return instance satisfies Instance;
 });
