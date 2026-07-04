@@ -1,0 +1,9 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.DS_Store
+.vite/
+.vitest/
+coverage/
+vite.config.*.timestamp-*
+vite.config.*.mjs
