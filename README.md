@@ -1,174 +1,85 @@
 # yard
 
-yard is a single-user remote development CLI for Linux servers. It gives each
-project or existing git worktree its own systemd-managed dev process and stable
-preview URL without manually assigning ports or editing reverse-proxy config.
+yard is a lightweight remote-development tool for a single-user Linux server. It
+gives every project — and every git worktree of that project — its own
+systemd-managed dev process and a stable public preview URL, so AI agents and a
+developer can run many apps in parallel without hand-assigning ports, minding
+processes, or editing reverse-proxy config. You `yard up` inside a repo and get
+back an `https://` URL that serves your dev server through a Cloudflare tunnel.
 
-Request path:
+## How a request reaches your app
 
 ```text
-Cloudflare edge -> cloudflared tunnel -> Caddy on 127.0.0.1 -> app process
+https://<repo>.<zone>
+  → Cloudflare edge        TLS termination; wildcard DNS *.<zone> → the tunnel
+  → cloudflared            outbound-only tunnel (yard-tunnel.service); one static
+                           wildcard ingress → http://127.0.0.1:<caddyHttpPort>
+  → Caddy                  plain HTTP on loopback (yard-caddy.service); routes by
+                           Host header via its admin API
+  → app process            your dev server (yard-app@<slug>--<proc>.service) on
+                           127.0.0.1:<port>
 ```
+
+Nothing binds `:443`, nothing needs sudo after `yard init`, and Tailscale or
+other services on the box are left untouched.
 
 ## Requirements
 
-- Linux with a systemd user session
-- Node.js 24 or newer
-- A Cloudflare account and zone
-- `cloudflared` authenticated during `yard init`
-- No sudo for app lifecycle commands after init
+- Linux with a **systemd user session** (`systemctl --user`) and lingering
+  enabled — `yard init` enables it for you.
+- **Node.js ≥ 24**.
+- A **Cloudflare account** with a **zone** on the free plan (free Universal SSL
+  covers one subdomain level under the apex).
+- `caddy` and `cloudflared` — used from `PATH` if present, otherwise pinned
+  versions are downloaded during `yard init`.
 
-## Install From Source
+## Install from source
+
+yard uses [Vite+](https://vite.dev) (`vp`) for every repo task — never call
+`pnpm`, `npm`, `npx`, or `vite` directly.
 
 ```bash
 vp install
-vp run build:bundle
+vp run build:bundle          # bundles the CLI to dist/bin.mjs
 mkdir -p ~/.local/bin
 ln -sf "$PWD/dist/bin.mjs" ~/.local/bin/yard
 ```
 
-The project uses Vite+ (`vp`) for all local development commands.
+Make sure `~/.local/bin` is on your `PATH`.
 
-## First Run
+## Quick start
 
-Run init once on the server:
-
-```bash
-yard init --zone example.com
-```
-
-`yard init` resolves or downloads Caddy and cloudflared, creates a Cloudflare
-tunnel, writes `~/.config/yard/config.json`, writes daemon unit files, enables
-linger, and starts `yard-caddy.service` plus `yard-tunnel.service`.
-
-Then run from an existing git worktree:
+Run `init` once per server to bootstrap the tunnel and daemons (a browser login
+flow for Cloudflare runs during this step):
 
 ```bash
-yard up
-yard url
-yard status
-yard down
-yard rm
+yard init example.com          # or: yard init --zone example.com
 ```
 
-Primary worktrees use `https://<repo>.<zone>`. Linked worktrees use
-`https://<repo>-<word>.<zone>`. Extra routes use
-`https://<slug>-<route>.<zone>`.
-
-## Commands
-
-All commands accept `--json` on the root command, for example:
+Then, from inside any git repo or worktree:
 
 ```bash
-yard --json status
-yard --json url
+yard up      # start the dev process and route it publicly
+yard url     # print the URL, e.g. https://myrepo.example.com
+yard status  # show live process + route status
+yard down    # stop the process, keep a friendly 503 page
+yard rm      # remove all yard resources (never touches your worktree)
 ```
 
-| Command                                  | Purpose                                                                   |
-| ---------------------------------------- | ------------------------------------------------------------------------- |
-| `yard up [--port N] [--no-wait]`         | Start or update the current worktree instance and route it through Caddy. |
-| `yard down`                              | Stop app units but keep routes, returning a friendly 503 page.            |
-| `yard restart [--no-wait]`               | Restart app units and restore running routes.                             |
-| `yard rm`                                | Stop units, remove yard drop-ins, remove Caddy routes, and delete state.  |
-| `yard status`                            | Show live systemd and Caddy status for the current instance.              |
-| `yard list`                              | Show all known instances with live status.                                |
-| `yard logs [-f] [-n N] [--process name]` | Read journald logs for an app process.                                    |
-| `yard url [--route name]`                | Print the public URL. JSON output includes `authHeaders: {}`.             |
-| `yard env link`                          | Apply configured env symlinks and copy-once files.                        |
-| `yard init --zone ZONE`                  | Configure global state, tunnel, Caddy, and user services.                 |
-| `yard doctor`                            | Check binaries, systemd, daemons, tunnel, DNS, and port range.            |
-| `yard caddy start\|stop\|status\|logs`   | Manage the yard Caddy user service.                                       |
-| `yard tunnel start\|stop\|status\|logs`  | Manage the yard cloudflared user service.                                 |
-| `yard print-vite-config`                 | Print the Vite server snippet expected behind yard.                       |
+- Primary worktree → `https://<repo>.<zone>`
+- Linked worktree → `https://<repo>-<word>.<zone>` (a stable random word)
+- Extra routes → `https://<slug>-<route>.<zone>`
 
-## `yard.json`
+Every command accepts `--json` for machine-readable output.
 
-yard reads config from `yard.json`, then `package.json#yard`, then detection
-defaults. Fields are optional.
+## Documentation
 
-### Plain Vite App
+- [Getting started](docs/getting-started.md) — the full first-run walkthrough.
+- [Configuration](docs/configuration.md) — `yard.json`, env files, global config.
+- [Commands](docs/commands.md) — every command, flag, and exit code.
+- [Architecture](docs/architecture.md) — request chain, units, state, locking.
+- [Troubleshooting](docs/troubleshooting.md) — `yard doctor`, failures, resets.
 
-No config is required if detection finds the dev command.
+## License
 
-```json
-{
-  "processes": {
-    "web": { "command": "vp run dev", "route": true }
-  }
-}
-```
-
-### Vite Plus Convex Cloud
-
-Use Convex as an unrouted sidecar. Choose env behavior per repo.
-
-```json
-{
-  "processes": {
-    "web": { "command": "vp run dev", "route": true },
-    "convex": { "command": "vp run convex dev" }
-  },
-  "env": {
-    "link": [".env"],
-    "copyOnce": [".env.local"]
-  }
-}
-```
-
-### Vite Plus Local Convex Backend
-
-Extra routes allocate real route keys and inject their ports into every process.
-
-```json
-{
-  "processes": {
-    "web": { "command": "vp run dev", "route": true },
-    "convex": {
-      "command": "vp run convex dev --local --local-cloud-port $CONVEX_CLOUD_PORT --local-site-port $CONVEX_SITE_PORT"
-    }
-  },
-  "routes": {
-    "convex": {
-      "process": "convex",
-      "portEnv": "CONVEX_CLOUD_PORT",
-      "urlEnv": "VITE_CONVEX_URL"
-    },
-    "convex-site": {
-      "process": "convex",
-      "portEnv": "CONVEX_SITE_PORT",
-      "urlEnv": "VITE_CONVEX_SITE_URL"
-    }
-  },
-  "env": {
-    "link": [".env"],
-    "copyOnce": [".env.local"]
-  }
-}
-```
-
-Exactly one process should set `"route": true`; that process receives `PORT`
-and `DEV_HOST`.
-
-## Vite
-
-Print the current snippet with:
-
-```bash
-yard print-vite-config
-```
-
-It configures Vite to listen on `127.0.0.1`, use `PORT`, enforce
-`strictPort`, allow `DEV_HOST`, and use WSS HMR on client port 443.
-
-## Troubleshooting
-
-Run:
-
-```bash
-yard doctor
-yard --json doctor
-```
-
-`doctor` checks required binaries, systemd user availability, linger, the Caddy
-and tunnel units, Caddy admin reachability, tunnel health, wildcard DNS, tunnel
-credentials, and port-range sanity.
+MIT.
