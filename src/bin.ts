@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Cause from "effect/Cause";
@@ -5,6 +6,9 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { Command, Flag } from "effect/unstable/cli";
 import { FetchHttpClient } from "effect/unstable/http";
+// @effect-diagnostics-next-line nodeBuiltinImport:off
+import { realpathSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import pkg from "../package.json" with { type: "json" };
 import { caddyCommand, tunnelCommand } from "./commands/daemon.ts";
 import { doctorCommand } from "./commands/doctor.ts";
@@ -205,6 +209,18 @@ export const runCli = () =>
     NodeRuntime.runMain,
   );
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+const isCliEntry = () => {
+  if (process.argv[1] === undefined) {
+    return false;
+  }
+
+  try {
+    return realpathSync(fileURLToPath(import.meta.url)) === realpathSync(process.argv[1]);
+  } catch {
+    return false;
+  }
+};
+
+if (isCliEntry()) {
   runCli();
 }
