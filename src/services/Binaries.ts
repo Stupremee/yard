@@ -1,4 +1,5 @@
 import * as Clock from "effect/Clock";
+import * as Schema from "effect/Schema";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -9,10 +10,12 @@ import { HttpClient, HttpClientRequest } from "effect/unstable/http";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import {
   BinaryUnavailable,
+  ConfigInvalid,
   FilesystemError,
   ProcessFailed,
   TunnelNotConfigured,
 } from "../domain/errors.ts";
+import { BinariesConfig } from "../domain/model.ts";
 import { StateStore } from "./StateStore.ts";
 import { Xdg } from "./Xdg.ts";
 
@@ -125,6 +128,7 @@ export class Binaries extends Context.Service<
     ) => Effect.Effect<
       string,
       | BinaryUnavailable
+      | ConfigInvalid
       | FilesystemError
       | PlatformError.PlatformError
       | ProcessFailed
@@ -133,6 +137,7 @@ export class Binaries extends Context.Service<
     readonly resolveAll: () => Effect.Effect<
       { readonly caddy: string; readonly cloudflared: string },
       | BinaryUnavailable
+      | ConfigInvalid
       | FilesystemError
       | PlatformError.PlatformError
       | ProcessFailed
@@ -251,8 +256,17 @@ export class Binaries extends Context.Service<
       });
 
       const resolve = Effect.fn("Binaries.resolve")(function* (name: BinaryName) {
-        const config = yield* state.loadGlobalConfig().pipe(Effect.orDie);
-        const configured = config.binaries[name];
+        const binaries = yield* state.loadGlobalConfig().pipe(
+          Effect.map((config) => config.binaries),
+          Effect.catch((error) =>
+            Schema.is(ConfigInvalid)(error) &&
+            error.error instanceof Error &&
+            error.error.message === "Missing global config"
+              ? Effect.succeed(new BinariesConfig({ caddy: "auto", cloudflared: "auto" }))
+              : Effect.fail(error),
+          ),
+        );
+        const configured = binaries[name];
         if (configured !== "auto") {
           if (!isAbsolutePath(configured)) {
             return yield* new TunnelNotConfigured({

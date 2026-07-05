@@ -56,12 +56,18 @@ const stateBackedLayer = Layer.merge(
 );
 
 const appLayer = Layer.merge(
-  Git.layer,
-  Layer.merge(RepoConfig.layer, Layer.merge(EnvLinker.layer, stateBackedLayer)),
+  Xdg.layer,
+  Layer.merge(
+    Git.layer,
+    Layer.merge(RepoConfig.layer, Layer.merge(EnvLinker.layer, stateBackedLayer)),
+  ),
 );
 
 const outputLayer = Output.layer(process.argv.includes("--json"));
-const completeAppLayer = Layer.merge(outputLayer, Layer.merge(FetchHttpClient.layer, appLayer));
+export const completeAppLayer = Layer.merge(
+  outputLayer,
+  Layer.merge(FetchHttpClient.layer, appLayer),
+);
 
 const provideWith = <CommandValue, LayerOut, LayerError, LayerIn>(
   command: CommandValue,
@@ -183,17 +189,22 @@ const renderFailure = (jsonMode: boolean, error: unknown) =>
 
 const main = Command.run(providedRoot, { version: pkg.version }).pipe(Effect.provide(runtimeLayer));
 
-main.pipe(
-  Effect.catchCause((cause) => {
-    const error = Cause.squash(cause);
-    const jsonMode = process.argv.includes("--json");
-    return renderFailure(jsonMode, error).pipe(
-      Effect.andThen(
-        Effect.sync(() => {
-          process.exitCode = 1;
-        }),
-      ),
-    );
-  }),
-  NodeRuntime.runMain,
-);
+export const runCli = () =>
+  main.pipe(
+    Effect.catchCause((cause) => {
+      const error = Cause.squash(cause);
+      const jsonMode = process.argv.includes("--json");
+      return renderFailure(jsonMode, error).pipe(
+        Effect.andThen(
+          Effect.sync(() => {
+            process.exitCode = 1;
+          }),
+        ),
+      );
+    }),
+    NodeRuntime.runMain,
+  );
+
+if (import.meta.url === `file://${process.argv[1]}`) {
+  runCli();
+}

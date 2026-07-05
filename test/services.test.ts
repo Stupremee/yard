@@ -6,6 +6,9 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import * as TestClock from "effect/testing/TestClock";
+import { FetchHttpClient } from "effect/unstable/http";
+import * as Context from "effect/Context";
+import { completeAppLayer } from "../src/bin.ts";
 import { GlobalConfig, Instance, InstancesFile } from "../src/domain/model.ts";
 import { isPidAlive, Lock, lockRetryTimeoutMillis } from "../src/services/Lock.ts";
 import { StateStore } from "../src/services/StateStore.ts";
@@ -42,6 +45,13 @@ const testLayer = StateStore.layer.pipe(
 const lockLayer = Lock.layer.pipe(Layer.provideMerge(Xdg.layer), Layer.provide(NodeServices.layer));
 
 describe("StateStore", () => {
+  it.effect("complete app layer exposes Xdg for command handlers", () =>
+    Effect.gen(function* () {
+      const context = yield* Effect.scoped(Layer.build(completeAppLayer));
+      expect(Context.get(context, Xdg)).toBeDefined();
+    }).pipe(Effect.provide(Layer.merge(FetchHttpClient.layer, NodeServices.layer))),
+  );
+
   it.effect("loads defaults when instances file is missing", () =>
     withTempXdg(
       Effect.gen(function* () {

@@ -73,7 +73,7 @@ export const renderAppDropin = (input: AppDropinInput): string => {
   // systemd does not unquote WorkingDirectory= (unlike Environment=/ExecStart=);
   // a quoted value is rejected as a non-absolute path, so emit it verbatim.
   return `[Service]
-WorkingDirectory=${input.workingDirectory}
+WorkingDirectory=${escapeSystemdSpecifiers(input.workingDirectory)}
 ${environment.map(envLine).join("\n")}
 ExecStart=
 ExecStart=/bin/sh -lc ${shellSingleQuote(input.command)}
@@ -93,7 +93,9 @@ const renderDaemonUnit = (description: string, input: DaemonUnitInput): string =
   );
   const lines = [
     unitPreamble(description).trimEnd(),
-    input.workingDirectory === undefined ? undefined : `WorkingDirectory=${input.workingDirectory}`,
+    input.workingDirectory === undefined
+      ? undefined
+      : `WorkingDirectory=${escapeSystemdSpecifiers(input.workingDirectory)}`,
     ...environment.map(envLine),
     `ExecStart=${[input.executable, ...args].map(systemdQuote).join(" ")}`,
     "Restart=on-failure",

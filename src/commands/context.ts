@@ -1,7 +1,12 @@
 import * as Effect from "effect/Effect";
 import { InstanceNotFound, NoInstanceForWorktree, NotAGitRepo } from "../domain/errors.ts";
 import { Instance } from "../domain/model.ts";
-import { composeInstanceSlug, slugifyRepoName } from "../domain/slug.ts";
+import {
+  composeInstanceSlug,
+  primaryHostname,
+  routeHostname,
+  slugifyRepoName,
+} from "../domain/slug.ts";
 import { pickWord } from "../domain/wordlist.ts";
 import { Git } from "../services/Git.ts";
 import { StateStore } from "../services/StateStore.ts";
@@ -85,7 +90,7 @@ export const resolveContextForUp = Effect.fn("commands.context.resolveContextFor
     ? null
     : (persisted?.[1].word ??
       (yield* pickWord((candidate) =>
-        Object.keys(state.instances).includes(composeInstanceSlug(base.repoName, candidate)),
+        hostnameCollides(state.instances, composeInstanceSlug(base.repoName, candidate)),
       )));
   return {
     ...base,
@@ -93,6 +98,19 @@ export const resolveContextForUp = Effect.fn("commands.context.resolveContextFor
     word,
   } satisfies InstanceContext;
 });
+
+const hostnameCollides = (instances: Readonly<Record<string, Instance>>, slug: string): boolean => {
+  const host = primaryHostname(slug);
+  for (const [existingSlug, instance] of Object.entries(instances)) {
+    if (primaryHostname(existingSlug) === host) return true;
+    for (const route of Object.keys(instance.ports)) {
+      if (route !== instance.routedProcess && routeHostname(existingSlug, route) === host) {
+        return true;
+      }
+    }
+  }
+  return false;
+};
 
 export const lookupInstance = Effect.fn("commands.context.lookupInstance")(function* (
   slug: string,

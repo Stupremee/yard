@@ -24,6 +24,9 @@ const readLockPid = (fs: FileSystem.FileSystem, file: string) =>
     return Number.parseInt(yield* fs.readFileString(file).pipe(Effect.orElseSucceed(() => "")), 10);
   });
 
+const staleLockPath = (path: Path.Path, file: string) =>
+  path.join(path.dirname(file), `${path.basename(file)}.stale-${process.pid}`);
+
 export const lockRetryDelayMillis = 150;
 export const lockRetryTimeoutMillis = 3_000;
 
@@ -52,9 +55,17 @@ const tryAcquireLockFile = (
     if (Number.isFinite(pid) && isPidAlive(pid)) {
       return { acquired: false, pid } as const;
     }
-    const beforeRemovePid = yield* readLockPid(fs, file);
-    if (beforeRemovePid === pid) {
-      yield* fs.remove(file, { force: true }).pipe(Effect.orDie);
+    const beforeRenamePid = yield* readLockPid(fs, file);
+    if (beforeRenamePid === pid) {
+      const staleFile = staleLockPath(path, file);
+      yield* fs.remove(staleFile, { force: true }).pipe(Effect.orDie);
+      const renamed = yield* fs.rename(file, staleFile).pipe(
+        Effect.as(true),
+        Effect.orElseSucceed(() => false),
+      );
+      if (renamed) {
+        yield* fs.remove(staleFile, { force: true }).pipe(Effect.orDie);
+      }
     }
     return yield* tryAcquireLockFile(fs, path, file);
   });

@@ -108,14 +108,6 @@ const catchAllRoute = (): CaddyRoute => ({
 const sortedEntries = <A>(record: Readonly<Record<string, A>>) =>
   Object.entries(record).sort(([left], [right]) => left.localeCompare(right));
 
-const stoppedInstances = (instances: CaddyInstances): CaddyInstances =>
-  Object.fromEntries(
-    Object.entries(instances).map(([slug, value]) => {
-      const state = normalizeInstanceState(value);
-      return [slug, { instance: state.instance, running: false }];
-    }),
-  );
-
 export const generateCaddyConfig = (
   globalConfig: GlobalConfig,
   instances: CaddyInstances,
@@ -271,7 +263,7 @@ export class Caddy extends Context.Service<
       ) {
         const config = generateCaddyConfig(globalConfig, instances);
         yield* loadConfig(globalConfig, config);
-        yield* persistConfig(generateCaddyConfig(globalConfig, stoppedInstances(instances)));
+        yield* persistConfig(config);
       });
 
       return {

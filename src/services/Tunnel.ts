@@ -7,7 +7,13 @@ import * as Path from "effect/Path";
 import type * as PlatformError from "effect/PlatformError";
 import * as Stream from "effect/Stream";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
-import { FilesystemError, ProcessFailed, TunnelNotConfigured } from "../domain/errors.ts";
+import {
+  BinaryUnavailable,
+  ConfigInvalid,
+  FilesystemError,
+  ProcessFailed,
+  TunnelNotConfigured,
+} from "../domain/errors.ts";
 import { StateStore } from "./StateStore.ts";
 import { Xdg } from "./Xdg.ts";
 import { Binaries } from "./Binaries.ts";
@@ -122,22 +128,51 @@ export class Tunnel extends Context.Service<
   {
     readonly login: () => Effect.Effect<
       string,
-      PlatformError.PlatformError | ProcessFailed | TunnelNotConfigured
+      | BinaryUnavailable
+      | ConfigInvalid
+      | FilesystemError
+      | PlatformError.PlatformError
+      | ProcessFailed
+      | TunnelNotConfigured
     >;
     readonly create: (
       name: string,
     ) => Effect.Effect<
       TunnelCreateResult,
-      PlatformError.PlatformError | ProcessFailed | TunnelNotConfigured
+      | BinaryUnavailable
+      | ConfigInvalid
+      | FilesystemError
+      | PlatformError.PlatformError
+      | ProcessFailed
+      | TunnelNotConfigured
     >;
     readonly routeDns: (
       name: string,
       zone: string,
-    ) => Effect.Effect<void, PlatformError.PlatformError | ProcessFailed | TunnelNotConfigured>;
+    ) => Effect.Effect<
+      void,
+      | BinaryUnavailable
+      | ConfigInvalid
+      | FilesystemError
+      | PlatformError.PlatformError
+      | ProcessFailed
+      | TunnelNotConfigured
+    >;
     readonly info: (
       name: string,
-    ) => Effect.Effect<string, PlatformError.PlatformError | ProcessFailed | TunnelNotConfigured>;
-    readonly writeConfig: () => Effect.Effect<void, FilesystemError | TunnelNotConfigured>;
+    ) => Effect.Effect<
+      string,
+      | BinaryUnavailable
+      | ConfigInvalid
+      | FilesystemError
+      | PlatformError.PlatformError
+      | ProcessFailed
+      | TunnelNotConfigured
+    >;
+    readonly writeConfig: () => Effect.Effect<
+      void,
+      ConfigInvalid | FilesystemError | TunnelNotConfigured
+    >;
   }
 >()("yard/services/Tunnel") {
   static readonly layer = Layer.effect(
@@ -151,7 +186,7 @@ export class Tunnel extends Context.Service<
       const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
 
       const run = Effect.fn("Tunnel.run")(function* (args: ReadonlyArray<string>) {
-        const cloudflared = yield* binaries.resolve("cloudflared").pipe(Effect.orDie);
+        const cloudflared = yield* binaries.resolve("cloudflared");
         return yield* Effect.scoped(
           Effect.gen(function* () {
             const handle = yield* spawner.spawn(ChildProcess.make(cloudflared, [...args]));
@@ -182,7 +217,7 @@ export class Tunnel extends Context.Service<
       const runInteractive = Effect.fn("Tunnel.runInteractive")(function* (
         args: ReadonlyArray<string>,
       ) {
-        const cloudflared = yield* binaries.resolve("cloudflared").pipe(Effect.orDie);
+        const cloudflared = yield* binaries.resolve("cloudflared");
         const pump = (stream: Stream.Stream<Uint8Array, PlatformError.PlatformError>) =>
           Stream.runForEach(stream, (chunk) =>
             Effect.sync(() => {
@@ -247,7 +282,7 @@ export class Tunnel extends Context.Service<
           return yield* run(["tunnel", "info", name]);
         }),
         writeConfig: Effect.fn("Tunnel.writeConfig")(function* () {
-          const config = yield* state.loadGlobalConfig().pipe(Effect.orDie);
+          const config = yield* state.loadGlobalConfig();
           const paths = yield* xdg.paths();
           const tunnelConfig = renderTunnelConfig({
             tunnelId: config.tunnel.id,

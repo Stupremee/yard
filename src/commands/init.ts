@@ -126,7 +126,16 @@ export const initCommand = Command.make(
       });
       yield* state.saveGlobalConfig(finalConfig);
       yield* tunnel.writeConfig();
-      const caddyConfig = caddy.generateConfig(finalConfig, {});
+      const instances = yield* state.loadInstances();
+      const caddyConfig = caddy.generateConfig(
+        finalConfig,
+        Object.fromEntries(
+          Object.entries(instances.instances).map(([slug, instance]) => [
+            slug,
+            { instance, running: false },
+          ]),
+        ),
+      );
       yield* caddy.persistConfig(caddyConfig);
       const caddyConfigPath = yield* caddy.configPath();
       const tunnelConfigPath = path.join(paths.stateDir, "tunnel.yml");

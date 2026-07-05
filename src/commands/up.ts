@@ -153,6 +153,31 @@ export const deriveCaddyInstances = Effect.fn("commands.lifecycle.deriveCaddyIns
 const failInvalid = (message: string) =>
   new ConfigInvalid({ path: "repo config", error: new Error(message) });
 
+const assertNoHostnameCollisions = (
+  state: InstancesFile,
+  slug: string,
+  config: RepoConfig,
+): Effect.Effect<void, ConfigInvalid> => {
+  for (const route of Object.keys(config.routes)) {
+    const routeHost = routeHostname(slug, route);
+    for (const [existingSlug, instance] of Object.entries(state.instances)) {
+      if (existingSlug !== slug && primaryHostname(existingSlug) === routeHost) {
+        return failInvalid(`Route "${route}" collides with instance ${existingSlug}`);
+      }
+      for (const existingRoute of Object.keys(instance.ports)) {
+        if (
+          existingRoute !== instance.routedProcess &&
+          routeHostname(existingSlug, existingRoute) === routeHost &&
+          (existingSlug !== slug || !Object.hasOwn(config.routes, existingRoute))
+        ) {
+          return failInvalid(`Route "${route}" collides with ${existingSlug}-${existingRoute}`);
+        }
+      }
+    }
+  }
+  return Effect.void;
+};
+
 export const allocatePorts = Effect.fn("commands.lifecycle.allocatePorts")(function* (
   slug: string,
   config: RepoConfig,
@@ -352,6 +377,7 @@ const runUp = Effect.fn("commands.up.run")(function* (options: {
         globalConfig,
         Option.getOrUndefined(options.port),
       );
+      yield* assertNoHostnameCollisions(nextState, context.slug, config);
       yield* store.saveInstances(nextState);
       const instance = nextState.instances[context.slug];
       if (instance === undefined) {

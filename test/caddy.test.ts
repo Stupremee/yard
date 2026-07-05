@@ -204,7 +204,7 @@ describe("generateCaddyConfig", () => {
 });
 
 describe("Caddy service", () => {
-  it.effect("posts generated config before persisting reboot-safe stopped routes", () => {
+  it.effect("posts generated config before persisting the same live-derived routes", () => {
     const seen: Array<{ method: string; url: string; body: unknown }> = [];
     const httpLayer = Layer.succeed(
       HttpClient.HttpClient,
@@ -232,13 +232,7 @@ describe("Caddy service", () => {
 
         const fs = yield* FileSystem.FileSystem;
         const path = yield* caddy.configPath();
-        expect(yield* fs.readFileString(path)).toBe(
-          encodeCaddyConfig(
-            generateCaddyConfig(globalConfig, {
-              app: { instance: instance({ web: 3100 }), running: false },
-            }),
-          ),
-        );
+        expect(yield* fs.readFileString(path)).toBe(encodeCaddyConfig(config));
         expect(seen).toEqual([
           {
             method: "POST",

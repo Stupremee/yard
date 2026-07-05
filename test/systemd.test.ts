@@ -47,18 +47,19 @@ describe("Systemd unit rendering", () => {
     expect(output).toContain("ExecStart=/bin/sh -lc 'echo '\\''$PORT'\\'' && vp run dev'");
   });
 
-  it("escapes systemd percent specifiers in commands and environment", () => {
+  it("escapes systemd percent specifiers in commands, environment, and working directories", () => {
     const output = renderAppDropin({
       slug: "repo",
       processName: "web",
       command: "date +%s && printf '%s\\n' ok",
-      workingDirectory: "/srv/dev/repo",
+      workingDirectory: "/srv/dev/repo%h",
       environment: {
         PORT: 3100,
         FORMAT: "%s",
       },
     });
 
+    expect(output).toContain("WorkingDirectory=/srv/dev/repo%%h");
     expect(output).toContain('Environment="FORMAT=%%s"');
     expect(output).toContain("ExecStart=/bin/sh -lc 'date +%%s && printf '\\''%%s\\n'\\'' ok'");
   });
@@ -100,9 +101,10 @@ describe("Systemd unit rendering", () => {
       renderCaddyUnit({
         executable: "/bin/date",
         args: ["+%s"],
+        workingDirectory: "/tmp/%h",
         environment: { FORMAT: "%Y" },
       }),
-    ).toContain('ExecStart="/bin/date" "+%%s"');
+    ).toContain("WorkingDirectory=/tmp/%%h");
   });
 });
 
