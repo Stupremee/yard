@@ -25,6 +25,7 @@ import { upCommand } from "./commands/up.ts";
 import { urlCommand } from "./commands/url.ts";
 import { Binaries } from "./services/Binaries.ts";
 import { Caddy } from "./services/Caddy.ts";
+import { CloudflareDns } from "./services/CloudflareDns.ts";
 import { EnvLinker } from "./services/EnvLinker.ts";
 import { Git } from "./services/Git.ts";
 import { Lock } from "./services/Lock.ts";
@@ -42,6 +43,7 @@ const stateStoreLayer = StateStore.layer.pipe(Layer.provide(Xdg.layer));
 const lockLayer = Lock.layer.pipe(Layer.provide(Xdg.layer));
 const systemdLayer = Systemd.layer.pipe(Layer.provide(Xdg.layer));
 const caddyLayer = Caddy.layer.pipe(Layer.provide(FetchHttpClient.layer), Layer.provide(Xdg.layer));
+const cloudflareDnsLayer = CloudflareDns.layer.pipe(Layer.provide(FetchHttpClient.layer));
 const binariesLayer = Binaries.layer.pipe(Layer.provide(Layer.merge(Xdg.layer, stateStoreLayer)));
 const portsLayer = Ports.layer.pipe(Layer.provide(stateStoreLayer));
 const tunnelLayer = Tunnel.layer.pipe(
@@ -54,7 +56,13 @@ const stateBackedLayer = Layer.merge(
     lockLayer,
     Layer.merge(
       systemdLayer,
-      Layer.merge(caddyLayer, Layer.merge(binariesLayer, Layer.merge(portsLayer, tunnelLayer))),
+      Layer.merge(
+        caddyLayer,
+        Layer.merge(
+          cloudflareDnsLayer,
+          Layer.merge(binariesLayer, Layer.merge(portsLayer, tunnelLayer)),
+        ),
+      ),
     ),
   ),
 );

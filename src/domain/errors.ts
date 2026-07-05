@@ -18,6 +18,15 @@ export class CaddyUnreachable extends Schema.TaggedErrorClass<CaddyUnreachable>(
   },
 ) {}
 
+export class CloudflareDnsError extends Schema.TaggedErrorClass<CloudflareDnsError>()(
+  "CloudflareDnsError",
+  {
+    hostname: Schema.String,
+    operation: Schema.String,
+    message: Schema.String,
+  },
+) {}
+
 export class TunnelNotConfigured extends Schema.TaggedErrorClass<TunnelNotConfigured>()(
   "TunnelNotConfigured",
   {

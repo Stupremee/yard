@@ -15,16 +15,46 @@ describe("Tunnel pure helpers", () => {
       renderTunnelConfig({
         tunnelId,
         credentialsFile: "~/.local/state/yard/tunnel-credentials.json",
-        zone: "example.de",
+        hostnames: ["app.example.de", "app-api.example.de"],
         caddyHttpPort: 8600,
       }),
     ).toBe(`tunnel: ${tunnelId}
 credentials-file: ~/.local/state/yard/tunnel-credentials.json
 ingress:
-  - hostname: "*.example.de"
+  - hostname: "app-api.example.de"
+    service: http://127.0.0.1:8600
+  - hostname: "app.example.de"
     service: http://127.0.0.1:8600
   - service: http_status:404
 `);
+  });
+
+  it("renders a valid 404-only tunnel config with no hostnames", () => {
+    expect(
+      renderTunnelConfig({
+        tunnelId,
+        credentialsFile: "/state/tunnel-credentials.json",
+        hostnames: [],
+        caddyHttpPort: 8600,
+      }),
+    ).toBe(`tunnel: ${tunnelId}
+credentials-file: /state/tunnel-credentials.json
+ingress:
+  - service: http_status:404
+`);
+  });
+
+  it("dedupes and sorts tunnel ingress hostnames", () => {
+    expect(
+      renderTunnelConfig({
+        tunnelId,
+        credentialsFile: "/state/tunnel-credentials.json",
+        hostnames: ["z.example.test", "a.example.test", "z.example.test"],
+        caddyHttpPort: 8600,
+      }),
+    ).toContain(`  - hostname: "a.example.test"
+    service: http://127.0.0.1:8600
+  - hostname: "z.example.test"`);
   });
 
   it("expands home-directory credentials paths before writing cloudflared config", () => {
@@ -64,7 +94,7 @@ ${tunnelId} yard   2026-07-04T00:00:00Z  1xord01`),
   });
 
   it("recognizes route dns success output", () => {
-    expect(parseRouteDnsOutput("Added CNAME *.example.de which will route to this tunnel")).toBe(
+    expect(parseRouteDnsOutput("Added CNAME app.example.de which will route to this tunnel")).toBe(
       true,
     );
   });

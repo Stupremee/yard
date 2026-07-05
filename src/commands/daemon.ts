@@ -7,6 +7,7 @@ import { Caddy } from "../services/Caddy.ts";
 import { Output } from "../services/Output.ts";
 import { StateStore } from "../services/StateStore.ts";
 import { Systemd } from "../services/Systemd.ts";
+import { Tunnel } from "../services/Tunnel.ts";
 import { Xdg } from "../services/Xdg.ts";
 import { deriveCaddyInstances } from "./up.ts";
 
@@ -116,6 +117,13 @@ export const renderCaddyConfigFromState = Effect.fn("commands.daemon.renderCaddy
   },
 );
 
+export const renderTunnelConfigFromState = Effect.fn("commands.daemon.renderTunnelConfigFromState")(
+  function* () {
+    const tunnel = yield* Tunnel;
+    yield* tunnel.writeConfig();
+  },
+);
+
 const makeDaemonGroup = (daemon: DaemonName) => {
   const start = Command.make("start", {}, () => daemonAction(daemon, "start"));
   const stop = Command.make("stop", {}, () => daemonAction(daemon, "stop"));
@@ -128,18 +136,15 @@ const makeDaemonGroup = (daemon: DaemonName) => {
     },
     daemonLogs.bind(null, daemon),
   );
-  const subcommands =
+  const render =
     daemon === "caddy"
-      ? [
-          start,
-          stop,
-          status,
-          logs,
-          Command.make("render", {}, () => renderCaddyConfigFromState()).pipe(
-            Command.withDescription("Render Caddy config from persisted state"),
-          ),
-        ]
-      : [start, stop, status, logs];
+      ? Command.make("render", {}, () => renderCaddyConfigFromState()).pipe(
+          Command.withDescription("Render Caddy config from persisted state"),
+        )
+      : Command.make("render", {}, () => renderTunnelConfigFromState()).pipe(
+          Command.withDescription("Render tunnel config from persisted state"),
+        );
+  const subcommands = [start, stop, status, logs, render];
   return Command.make(daemon).pipe(Command.withSubcommands(subcommands));
 };
 

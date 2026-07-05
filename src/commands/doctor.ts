@@ -13,6 +13,7 @@ import { StateStore } from "../services/StateStore.ts";
 import { Systemd } from "../services/Systemd.ts";
 import { Tunnel } from "../services/Tunnel.ts";
 import { expandHome } from "../services/Tunnel.ts";
+import { instanceHostnames } from "../domain/slug.ts";
 
 export type DoctorCheck = {
   readonly name: string;
@@ -211,10 +212,50 @@ export const collectDoctorChecks = Effect.fn("commands.doctor.collectDoctorCheck
           ),
       ),
       check(
-        "wildcard DNS",
+        "instance DNS",
+        Effect.gen(function* () {
+          const stateFile = yield* state.loadInstances();
+          const hostnames = Object.entries(stateFile.instances).flatMap(([slug, instance]) =>
+            instanceHostnames(slug, instance, config.zone),
+          );
+          if (hostnames.length === 0) {
+            return "no instances";
+          }
+          const results = yield* Effect.all(
+            hostnames.map((hostname) =>
+              resolveDns(hostname).pipe(
+                Effect.as({ hostname, ok: true as const }),
+                Effect.orElseSucceed(() => ({ hostname, ok: false as const })),
+              ),
+            ),
+            { concurrency: "unbounded" },
+          );
+          const unresolved = results
+            .filter((result) => !result.ok)
+            .map((result) => result.hostname);
+          if (unresolved.length > 0) {
+            return yield* new DoctorProbeFailed({
+              message: `unresolved hostnames: ${unresolved.join(", ")}`,
+            });
+          }
+          return `resolved ${results.length}/${hostnames.length} hostnames`;
+        }),
+      ),
+      check(
+        "no wildcard DNS",
         randomLabel.pipe(
-          Effect.flatMap((label) => resolveDns(`${label}.${config.zone}`)),
-          Effect.map((address) => `resolved ${address}`),
+          Effect.flatMap((label) =>
+            Effect.exit(resolveDns(`${label}.${config.zone}`)).pipe(
+              Effect.flatMap((exit) =>
+                exit._tag === "Success"
+                  ? new DoctorProbeFailed({
+                      message:
+                        "random label resolves; remove the wildcard DNS record or catch-all from Cloudflare because yard now uses per-hostname records",
+                    })
+                  : Effect.succeed("random label does not resolve"),
+              ),
+            ),
+          ),
         ),
       ),
       check(

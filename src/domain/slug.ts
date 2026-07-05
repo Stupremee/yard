@@ -1,3 +1,5 @@
+import type { Instance } from "./model.ts";
+
 const RESERVED_HOST_CHARS = /[^a-z0-9-]+/g;
 
 export const slugifyRepoName = (name: string): string => {
@@ -25,6 +27,18 @@ export const primaryHostname = (slug: string, zone?: string): string => {
   const host = slugifyRepoName(slug);
   return zone === undefined ? host : `${host}.${zone}`;
 };
+
+export const instanceHostnames = (
+  slug: string,
+  instance: Instance,
+  zone: string,
+): ReadonlyArray<string> => [
+  primaryHostname(slug, zone),
+  ...Object.keys(instance.ports)
+    .filter((route) => route !== instance.routedProcess)
+    .sort((left, right) => left.localeCompare(right))
+    .map((route) => routeHostname(slug, route, zone)),
+];
 
 export const escapeSystemdUnitInstance = (instance: string): string =>
   instance.replace(

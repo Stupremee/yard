@@ -105,7 +105,6 @@ export const initCommand = Command.make(
       const loginOutput = yield* tunnel.login();
 
       const created = yield* tunnel.create(tunnelName);
-      yield* tunnel.routeDns(tunnelName, selectedZone);
       yield* fs.makeDirectory(paths.stateDir, { recursive: true });
       yield* copyIfDifferent(fs, created.credentialsFile, credentialsFile);
       const adoptedCredentials = created.credentialsFile ?? previousTunnel?.credentialsFile;
@@ -154,6 +153,13 @@ export const initCommand = Command.make(
       yield* systemd.writeTunnelUnit({
         executable: resolved.cloudflared,
         args: ["tunnel", "--config", tunnelConfigPath, "run"],
+        execStartPre: [
+          {
+            executable: process.execPath,
+            args: [path.resolve(process.argv[1] ?? "dist/bin.mjs"), "tunnel", "render"],
+            ignoreFailure: true,
+          },
+        ],
       });
       yield* systemd.daemonReload();
       yield* systemd.enable("yard-caddy.service");
@@ -175,7 +181,7 @@ export const initCommand = Command.make(
         },
         human: [
           loginOutput,
-          `yard initialized for *.${selectedZone}`,
+          `yard initialized for ${selectedZone}; DNS records are created per instance on \`yard up\``,
           `config: ${paths.configFile}`,
           `state: ${paths.stateDir}`,
           ...formatDoctorChecks(checks),

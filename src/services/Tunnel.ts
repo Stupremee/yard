@@ -14,6 +14,7 @@ import {
   ProcessFailed,
   TunnelNotConfigured,
 } from "../domain/errors.ts";
+import { instanceHostnames } from "../domain/slug.ts";
 import { StateStore } from "./StateStore.ts";
 import { Xdg } from "./Xdg.ts";
 import { Binaries } from "./Binaries.ts";
@@ -47,15 +48,19 @@ const decodeStream = Effect.fn("Tunnel.decodeStream")(function* (
 export const renderTunnelConfig = (options: {
   readonly tunnelId: string;
   readonly credentialsFile: string;
-  readonly zone: string;
+  readonly hostnames: ReadonlyArray<string>;
   readonly caddyHttpPort: number;
 }) =>
   [
     `tunnel: ${options.tunnelId}`,
     `credentials-file: ${options.credentialsFile}`,
     "ingress:",
-    `  - hostname: "*.${options.zone}"`,
-    `    service: http://127.0.0.1:${options.caddyHttpPort}`,
+    ...Array.from(new Set(options.hostnames))
+      .sort((left, right) => left.localeCompare(right))
+      .flatMap((hostname) => [
+        `  - hostname: "${hostname}"`,
+        `    service: http://127.0.0.1:${options.caddyHttpPort}`,
+      ]),
     "  - service: http_status:404",
     "",
   ].join("\n");
@@ -148,7 +153,19 @@ export class Tunnel extends Context.Service<
     >;
     readonly routeDns: (
       name: string,
-      zone: string,
+      hostname: string,
+    ) => Effect.Effect<
+      void,
+      | BinaryUnavailable
+      | ConfigInvalid
+      | FilesystemError
+      | PlatformError.PlatformError
+      | ProcessFailed
+      | TunnelNotConfigured
+    >;
+    readonly ensureDnsRoutes: (
+      name: string,
+      hostnames: ReadonlyArray<string>,
     ) => Effect.Effect<
       void,
       | BinaryUnavailable
@@ -170,7 +187,7 @@ export class Tunnel extends Context.Service<
       | TunnelNotConfigured
     >;
     readonly writeConfig: () => Effect.Effect<
-      void,
+      boolean,
       ConfigInvalid | FilesystemError | TunnelNotConfigured
     >;
   }
@@ -251,6 +268,13 @@ export class Tunnel extends Context.Service<
         return parseTunnelList(yield* run(["tunnel", "list"]));
       });
 
+      const routeDns = Effect.fn("Tunnel.routeDns")(function* (name: string, hostname: string) {
+        const output = yield* run(["tunnel", "route", "dns", name, hostname]);
+        if (!parseRouteDnsOutput(output)) {
+          return yield* new TunnelNotConfigured({ message: output });
+        }
+      });
+
       return {
         login: Effect.fn("Tunnel.login")(function* () {
           const certFile = path.join(process.env.HOME ?? "", ".cloudflared", "cert.pem");
@@ -272,10 +296,13 @@ export class Tunnel extends Context.Service<
           }
           return { id: entry.id };
         }),
-        routeDns: Effect.fn("Tunnel.routeDns")(function* (name: string, zone: string) {
-          const output = yield* run(["tunnel", "route", "dns", name, `*.${zone}`]);
-          if (!parseRouteDnsOutput(output)) {
-            return yield* new TunnelNotConfigured({ message: output });
+        routeDns,
+        ensureDnsRoutes: Effect.fn("Tunnel.ensureDnsRoutes")(function* (
+          name: string,
+          hostnames: ReadonlyArray<string>,
+        ) {
+          for (const hostname of hostnames) {
+            yield* routeDns(name, hostname);
           }
         }),
         info: Effect.fn("Tunnel.info")(function* (name: string) {
@@ -283,14 +310,25 @@ export class Tunnel extends Context.Service<
         }),
         writeConfig: Effect.fn("Tunnel.writeConfig")(function* () {
           const config = yield* state.loadGlobalConfig();
+          const instances = yield* state.loadInstances();
           const paths = yield* xdg.paths();
           const tunnelConfig = renderTunnelConfig({
             tunnelId: config.tunnel.id,
             credentialsFile: expandHome(config.tunnel.credentialsFile),
-            zone: config.zone,
+            hostnames: Object.entries(instances.instances).flatMap(([slug, instance]) =>
+              instanceHostnames(slug, instance, config.zone),
+            ),
             caddyHttpPort: config.caddyHttpPort,
           });
-          yield* atomicWriteString(fs, path, path.join(paths.stateDir, "tunnel.yml"), tunnelConfig);
+          const tunnelFile = path.join(paths.stateDir, "tunnel.yml");
+          const existing = yield* fs
+            .readFileString(tunnelFile)
+            .pipe(Effect.orElseSucceed(() => ""));
+          if (existing === tunnelConfig) {
+            return false;
+          }
+          yield* atomicWriteString(fs, path, tunnelFile, tunnelConfig);
+          return true;
         }),
       };
     }),

@@ -7,7 +7,7 @@ import { HttpClient, HttpClientRequest } from "effect/unstable/http";
 import { ConfigInvalid } from "../domain/errors.ts";
 import { GlobalConfig, Instance, InstancesFile, RepoConfig } from "../domain/model.ts";
 import { appUnitName } from "../services/Systemd.ts";
-import { primaryHostname, routeHostname } from "../domain/slug.ts";
+import { instanceHostnames, primaryHostname, routeHostname } from "../domain/slug.ts";
 import { Caddy, type CaddyInstanceState } from "../services/Caddy.ts";
 import { EnvLinker, type EnvLinkerAction } from "../services/EnvLinker.ts";
 import { Lock } from "../services/Lock.ts";
@@ -16,6 +16,7 @@ import { Ports } from "../services/Ports.ts";
 import { RepoConfig as RepoConfigService } from "../services/RepoConfig.ts";
 import { StateStore } from "../services/StateStore.ts";
 import { Systemd } from "../services/Systemd.ts";
+import { Tunnel } from "../services/Tunnel.ts";
 import { resolveContextForUp, type InstanceContext } from "./context.ts";
 
 export type PortPlan = {
@@ -36,6 +37,7 @@ export type LifecycleSummary = {
   readonly units: ReadonlyArray<string>;
   readonly envActions: ReadonlyArray<EnvLinkerAction>;
   readonly ready?: boolean;
+  readonly warnings?: ReadonlyArray<string>;
 };
 
 const noWait = Flag.boolean("no-wait").pipe(Flag.withDescription("Do not wait for HTTP readiness"));
@@ -102,6 +104,7 @@ export const lifecycleSummary = (input: {
   readonly instance: Instance;
   readonly envActions?: ReadonlyArray<EnvLinkerAction>;
   readonly ready?: boolean;
+  readonly warnings?: ReadonlyArray<string>;
 }): LifecycleSummary => ({
   command: input.command,
   slug: input.slug,
@@ -110,6 +113,7 @@ export const lifecycleSummary = (input: {
   units: instanceUnits(input.slug, input.instance.processes),
   envActions: input.envActions ?? [],
   ...(input.ready === undefined ? {} : { ready: input.ready }),
+  ...("warnings" in input && input.warnings !== undefined ? { warnings: input.warnings } : {}),
 });
 
 export const summaryLines = (summary: LifecycleSummary): ReadonlyArray<string> => [
@@ -122,6 +126,7 @@ export const summaryLines = (summary: LifecycleSummary): ReadonlyArray<string> =
   ...(summary.ready === undefined
     ? []
     : [summary.ready ? "ready: yes" : "ready: no (timed out after 60s)"]),
+  ...(summary.warnings ?? []).map((warning) => `warning: ${warning}`),
 ];
 
 /**
@@ -372,6 +377,8 @@ const runUp = Effect.fn("commands.up.run")(function* (options: {
   const envLinker = yield* EnvLinker;
   const caddy = yield* Caddy;
   const output = yield* Output;
+  const systemd = yield* Systemd;
+  const tunnel = yield* Tunnel;
 
   const result = yield* lock.withMutationLock(
     Effect.gen(function* () {
@@ -396,6 +403,17 @@ const runUp = Effect.fn("commands.up.run")(function* (options: {
       const instance = nextState.instances[context.slug];
       if (instance === undefined) {
         return yield* failInvalid(`Failed to persist instance ${context.slug}`);
+      }
+      const hostnames = instanceHostnames(context.slug, instance, globalConfig.zone);
+      yield* tunnel.ensureDnsRoutes(globalConfig.tunnel.name, hostnames);
+      const tunnelConfigChanged = yield* tunnel.writeConfig();
+      if (tunnelConfigChanged) {
+        const tunnelActive = yield* systemd
+          .isActive("yard-tunnel.service")
+          .pipe(Effect.orElseSucceed(() => false));
+        if (tunnelActive) {
+          yield* systemd.restart("yard-tunnel.service");
+        }
       }
 
       const envActions = yield* envLinker.linkForWorktree({

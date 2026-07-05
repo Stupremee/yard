@@ -4,6 +4,7 @@ import * as Schema from "effect/Schema";
 import {
   appUnitInstanceName,
   composeInstanceSlug,
+  instanceHostnames,
   routeHostname,
   slugifyRepoName,
 } from "../src/domain/slug.ts";
@@ -23,6 +24,26 @@ describe("slug", () => {
 
   it("escapes systemd app unit instance names", () => {
     expect(appUnitInstanceName("repo/name", "web dev")).toBe("repo-name--web-dev");
+  });
+
+  it("enumerates primary and sorted route hostnames while skipping the routed process", () => {
+    const instance = new Instance({
+      repoName: "yard",
+      word: null,
+      worktreeRoot: "/srv/dev/yard",
+      primaryRoot: "/srv/dev/yard",
+      ports: { convex: 3101, web: 3100, api: 3102 },
+      processes: ["web", "convex"],
+      routedProcess: "web",
+      createdAt: "2026-07-04T00:00:00.000Z",
+      updatedAt: "2026-07-04T00:00:00.000Z",
+    });
+
+    expect(instanceHostnames("yard", instance, "example.test")).toEqual([
+      "yard.example.test",
+      "yard-api.example.test",
+      "yard-convex.example.test",
+    ]);
   });
 });
 
