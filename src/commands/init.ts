@@ -143,6 +143,12 @@ export const initCommand = Command.make(
       yield* systemd.writeCaddyUnit({
         executable: resolved.caddy,
         args: ["run", "--config", caddyConfigPath],
+        execStartPre: [
+          {
+            executable: process.execPath,
+            args: [path.resolve(process.argv[1] ?? "dist/bin.mjs"), "caddy", "render"],
+          },
+        ],
       });
       yield* systemd.writeTunnelUnit({
         executable: resolved.cloudflared,

@@ -76,6 +76,12 @@ describe("Systemd unit rendering", () => {
       renderCaddyUnit({
         executable: "/usr/bin/caddy",
         args: ["run", "--config", "/state/caddy.json"],
+        execStartPre: [
+          {
+            executable: "/usr/bin/node",
+            args: ["/opt/yard/bin.mjs", "caddy", "render"],
+          },
+        ],
         environment: { X: 'quote"back\\slash' },
       }),
     ).toMatchInlineSnapshot(`
@@ -84,6 +90,7 @@ describe("Systemd unit rendering", () => {
 
       [Service]
       Environment="X=quote\\"back\\\\slash"
+      ExecStartPre="/usr/bin/node" "/opt/yard/bin.mjs" "caddy" "render"
       ExecStart="/usr/bin/caddy" "run" "--config" "/state/caddy.json"
       Restart=on-failure
 

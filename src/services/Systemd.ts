@@ -21,6 +21,10 @@ export type AppDropinInput = {
 export type DaemonUnitInput = {
   readonly executable: string;
   readonly args?: ReadonlyArray<string>;
+  readonly execStartPre?: ReadonlyArray<{
+    readonly executable: string;
+    readonly args?: ReadonlyArray<string>;
+  }>;
   readonly workingDirectory?: string;
   readonly environment?: Readonly<Record<string, string | number>>;
 };
@@ -97,6 +101,10 @@ const renderDaemonUnit = (description: string, input: DaemonUnitInput): string =
       ? undefined
       : `WorkingDirectory=${escapeSystemdSpecifiers(input.workingDirectory)}`,
     ...environment.map(envLine),
+    ...(input.execStartPre ?? []).map(
+      (preStart) =>
+        `ExecStartPre=${[preStart.executable, ...(preStart.args ?? [])].map(systemdQuote).join(" ")}`,
+    ),
     `ExecStart=${[input.executable, ...args].map(systemdQuote).join(" ")}`,
     "Restart=on-failure",
     "",

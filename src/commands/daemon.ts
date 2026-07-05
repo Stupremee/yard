@@ -1,7 +1,11 @@
 import * as Effect from "effect/Effect";
 import { Command, Flag } from "effect/unstable/cli";
+import { GlobalConfig } from "../domain/model.ts";
+import { Caddy } from "../services/Caddy.ts";
 import { Output } from "../services/Output.ts";
+import { StateStore } from "../services/StateStore.ts";
 import { Systemd } from "../services/Systemd.ts";
+import { deriveCaddyInstances } from "./up.ts";
 
 type DaemonName = "caddy" | "tunnel";
 
@@ -62,6 +66,34 @@ const daemonLogs = (
     });
   });
 
+const baselineConfig = () =>
+  new GlobalConfig({
+    version: 1,
+    zone: "localhost",
+    tunnel: { name: "yard", id: "pending", credentialsFile: "" },
+  });
+
+export const renderCaddyConfigFromState = Effect.fn("commands.daemon.renderCaddyConfigFromState")(
+  function* () {
+    const caddy = yield* Caddy;
+    const state = yield* StateStore;
+
+    const globalConfig = yield* state
+      .loadGlobalConfig()
+      .pipe(
+        Effect.catch((error) =>
+          error._tag === "ConfigInvalid" ? Effect.succeed(baselineConfig()) : Effect.fail(error),
+        ),
+      );
+    const instances = yield* state.loadInstances();
+    const config = caddy.generateConfig(
+      globalConfig,
+      yield* deriveCaddyInstances(instances.instances),
+    );
+    yield* caddy.persistConfig(config);
+  },
+);
+
 const makeDaemonGroup = (daemon: DaemonName) => {
   const start = Command.make("start", {}, () => daemonAction(daemon, "start"));
   const stop = Command.make("stop", {}, () => daemonAction(daemon, "stop"));
@@ -74,7 +106,19 @@ const makeDaemonGroup = (daemon: DaemonName) => {
     },
     daemonLogs.bind(null, daemon),
   );
-  return Command.make(daemon).pipe(Command.withSubcommands([start, stop, status, logs]));
+  const subcommands =
+    daemon === "caddy"
+      ? [
+          start,
+          stop,
+          status,
+          logs,
+          Command.make("render", {}, () => renderCaddyConfigFromState()).pipe(
+            Command.withDescription("Render Caddy config from persisted state"),
+          ),
+        ]
+      : [start, stop, status, logs];
+  return Command.make(daemon).pipe(Command.withSubcommands(subcommands));
 };
 
 export const caddyCommand = makeDaemonGroup("caddy").pipe(

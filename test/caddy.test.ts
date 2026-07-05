@@ -11,8 +11,17 @@ import { HttpClient, HttpClientResponse } from "effect/unstable/http";
 import type * as HttpClientError from "effect/unstable/http/HttpClientError";
 import type * as HttpClientRequest from "effect/unstable/http/HttpClientRequest";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
-import { GlobalConfig, Instance } from "../src/domain/model.ts";
-import { Caddy, encodeCaddyConfig, generateCaddyConfig } from "../src/services/Caddy.ts";
+import { renderCaddyConfigFromState } from "../src/commands/daemon.ts";
+import { GlobalConfig, Instance, InstancesFile } from "../src/domain/model.ts";
+import {
+  Caddy,
+  type CaddyJsonConfig,
+  encodeCaddyConfig,
+  generateCaddyConfig,
+} from "../src/services/Caddy.ts";
+import { Output } from "../src/services/Output.ts";
+import { StateStore } from "../src/services/StateStore.ts";
+import { Systemd } from "../src/services/Systemd.ts";
 import { Xdg } from "../src/services/Xdg.ts";
 
 const globalConfig = new GlobalConfig({
@@ -102,6 +111,47 @@ const withTempXdg = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
       ),
     );
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer));
+
+const renderLayer = (activeUnits: ReadonlySet<string>) => {
+  const httpLayer = Layer.succeed(
+    HttpClient.HttpClient,
+    makeHttpClient((request) => Effect.succeed(jsonResponse(request, {}))),
+  );
+  const systemdLayer = Layer.succeed(Systemd, {
+    writeAppTemplate: () => Effect.void,
+    writeAppDropin: () => Effect.succeed(false),
+    writeCaddyUnit: () => Effect.void,
+    writeTunnelUnit: () => Effect.void,
+    daemonReload: () => Effect.void,
+    start: () => Effect.void,
+    stop: () => Effect.void,
+    restart: () => Effect.void,
+    enable: () => Effect.void,
+    disable: () => Effect.void,
+    resetFailed: () => Effect.void,
+    removeAppDropins: () => Effect.void,
+    isActive: (unit: string) => Effect.succeed(activeUnits.has(unit)),
+    show: () => Effect.succeed({}),
+    listYardUnits: () => Effect.succeed([]),
+    journal: () => Effect.succeed({ stdout: "", stderr: "", exitCode: 0 }),
+    journalFollow: () => Effect.void,
+    enableLinger: () => Effect.void,
+  });
+  const caddyLayer = Caddy.layer.pipe(Layer.provide(Xdg.layer), Layer.provide(httpLayer));
+  const stateStoreLayer = StateStore.layer.pipe(Layer.provide(Xdg.layer));
+  return Layer.merge(
+    caddyLayer,
+    Layer.merge(stateStoreLayer, Layer.merge(systemdLayer, Output.layer(false))),
+  ).pipe(Layer.provide(NodeServices.layer));
+};
+
+const readRenderedConfig = Effect.fn("test.readRenderedConfig")(function* () {
+  const caddy = yield* Caddy;
+  const fs = yield* FileSystem.FileSystem;
+  return (yield* Schema.decodeUnknownEffect(Schema.UnknownFromJsonString)(
+    yield* fs.readFileString(yield* caddy.configPath()),
+  )) as CaddyJsonConfig;
+});
 
 describe("generateCaddyConfig", () => {
   it("creates an empty baseline with only the 404 catch-all", () => {
@@ -311,5 +361,54 @@ describe("Caddy service", () => {
           expect(Number(exitCode)).toBe(0);
         }),
       ),
+  );
+});
+
+describe("yard caddy render", () => {
+  it.effect("writes a baseline 404 config when global and instance state are absent", () =>
+    withTempXdg(
+      Effect.gen(function* () {
+        yield* renderCaddyConfigFromState();
+
+        const rendered = yield* readRenderedConfig();
+        expect(rendered.admin.listen).toBe("127.0.0.1:2019");
+        expect(rendered.apps.http.servers.yard.listen).toEqual(["127.0.0.1:8600"]);
+        expect(rendered.apps.http.servers.yard.routes).toHaveLength(1);
+        expect(rendered.apps.http.servers.yard.routes[0]!.handle[0]).toMatchObject({
+          handler: "static_response",
+          status_code: "404",
+        });
+      }).pipe(Effect.provide(renderLayer(new Set()))),
+    ),
+  );
+
+  it.effect("renders stopped pages or proxy routes from live systemd state", () =>
+    withTempXdg(
+      Effect.gen(function* () {
+        const store = yield* StateStore;
+        yield* store.saveGlobalConfig(globalConfig);
+        yield* store.saveInstances(
+          new InstancesFile({
+            version: 1,
+            instances: {
+              app: instance({ web: 3100 }),
+              api: instance({ web: 3200 }),
+            },
+          }),
+        );
+
+        yield* renderCaddyConfigFromState();
+
+        const rendered = yield* readRenderedConfig();
+        expect(rendered.apps.http.servers.yard.routes[0]!.handle[0]).toMatchObject({
+          handler: "static_response",
+          status_code: "503",
+        });
+        expect(rendered.apps.http.servers.yard.routes[1]!.handle[0]).toEqual({
+          handler: "reverse_proxy",
+          upstreams: [{ dial: "127.0.0.1:3100" }],
+        });
+      }).pipe(Effect.provide(renderLayer(new Set(["yard-app@app--web.service"])))),
+    ),
   );
 });
