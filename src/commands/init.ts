@@ -4,6 +4,7 @@ import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 import { Argument, Command, Flag } from "effect/unstable/cli";
+import { TunnelNotConfigured } from "../domain/errors.js";
 import { AuthConfig, BinariesConfig, GlobalConfig, TunnelConfig } from "../domain/model.js";
 import { Binaries } from "../services/Binaries.js";
 import { Caddy } from "../services/Caddy.js";
@@ -50,20 +51,22 @@ export const buildInitConfig = (input: {
   readonly zone: string;
   readonly tunnelId: string;
   readonly credentialsFile: string;
+  readonly existing?: GlobalConfig;
 }) =>
   new GlobalConfig({
     version: 1,
     zone: input.zone,
-    caddyHttpPort: defaultCaddyHttpPort,
-    caddyAdminPort: defaultCaddyAdminPort,
-    portRange: defaultPortRange,
+    caddyHttpPort: input.existing?.caddyHttpPort ?? defaultCaddyHttpPort,
+    caddyAdminPort: input.existing?.caddyAdminPort ?? defaultCaddyAdminPort,
+    portRange: input.existing?.portRange ?? defaultPortRange,
     tunnel: new TunnelConfig({
       name: tunnelName,
       id: input.tunnelId,
       credentialsFile: input.credentialsFile,
     }),
-    binaries: new BinariesConfig({ caddy: "auto", cloudflared: "auto" }),
-    auth: new AuthConfig({ mode: "public" }),
+    binaries:
+      input.existing?.binaries ?? new BinariesConfig({ caddy: "auto", cloudflared: "auto" }),
+    auth: input.existing?.auth ?? new AuthConfig({ mode: "public" }),
   });
 
 export const initCommand = Command.make(
@@ -86,33 +89,40 @@ export const initCommand = Command.make(
       const xdg = yield* Xdg;
       const paths = yield* xdg.paths();
       const credentialsFile = path.join(paths.stateDir, "tunnel-credentials.json");
-
-      yield* state.saveGlobalConfig(
-        buildInitConfig({
-          zone: selectedZone,
-          tunnelId: "pending",
-          credentialsFile,
-        }),
-      );
+      const existingConfig = yield* state
+        .loadGlobalConfig()
+        .pipe(
+          Effect.catch((error) =>
+            error._tag === "ConfigInvalid" ? Effect.void : Effect.fail(error),
+          ),
+        );
+      const previousTunnel =
+        existingConfig?.tunnel.id === "pending" ? undefined : existingConfig?.tunnel;
 
       const resolved = yield* binaries.resolveAll();
       // Login output (the authorization URL) streams live to stderr while cloudflared
       // waits for the browser flow; the returned value is just a status line.
       const loginOutput = yield* tunnel.login();
-      yield* output.emit({
-        json: { step: "cloudflare-login", output: loginOutput },
-        human: loginOutput,
-      });
 
       const created = yield* tunnel.create(tunnelName);
       yield* tunnel.routeDns(tunnelName, selectedZone);
       yield* fs.makeDirectory(paths.stateDir, { recursive: true });
       yield* copyIfDifferent(fs, created.credentialsFile, credentialsFile);
+      const adoptedCredentials = created.credentialsFile ?? previousTunnel?.credentialsFile;
+      if (created.credentialsFile === undefined && adoptedCredentials === undefined) {
+        return yield* new TunnelNotConfigured({
+          message: `Tunnel ${tunnelName} already exists but no credentials file was found; copy ~/.cloudflared/${created.id}.json to ${credentialsFile} or delete and re-create the tunnel`,
+        });
+      }
 
       const finalConfig = buildInitConfig({
         zone: selectedZone,
         tunnelId: created.id,
-        credentialsFile,
+        credentialsFile:
+          created.credentialsFile === undefined && adoptedCredentials !== undefined
+            ? adoptedCredentials
+            : credentialsFile,
+        ...(existingConfig === undefined ? {} : { existing: existingConfig }),
       });
       yield* state.saveGlobalConfig(finalConfig);
       yield* tunnel.writeConfig();
@@ -143,10 +153,12 @@ export const initCommand = Command.make(
           configFile: paths.configFile,
           stateDir: paths.stateDir,
           tunnel: finalConfig.tunnel,
+          login: loginOutput,
           units: ["yard-caddy.service", "yard-tunnel.service"],
           checks,
         },
         human: [
+          loginOutput,
           `yard initialized for *.${selectedZone}`,
           `config: ${paths.configFile}`,
           `state: ${paths.stateDir}`,

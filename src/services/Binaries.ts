@@ -7,7 +7,12 @@ import * as Path from "effect/Path";
 import type * as PlatformError from "effect/PlatformError";
 import { HttpClient, HttpClientRequest } from "effect/unstable/http";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
-import { FilesystemError, ProcessFailed, TunnelNotConfigured } from "../domain/errors.js";
+import {
+  BinaryUnavailable,
+  FilesystemError,
+  ProcessFailed,
+  TunnelNotConfigured,
+} from "../domain/errors.js";
 import { StateStore } from "./StateStore.js";
 import { Xdg } from "./Xdg.js";
 
@@ -119,11 +124,19 @@ export class Binaries extends Context.Service<
       name: BinaryName,
     ) => Effect.Effect<
       string,
-      FilesystemError | PlatformError.PlatformError | ProcessFailed | TunnelNotConfigured
+      | BinaryUnavailable
+      | FilesystemError
+      | PlatformError.PlatformError
+      | ProcessFailed
+      | TunnelNotConfigured
     >;
     readonly resolveAll: () => Effect.Effect<
       { readonly caddy: string; readonly cloudflared: string },
-      FilesystemError | PlatformError.PlatformError | ProcessFailed | TunnelNotConfigured
+      | BinaryUnavailable
+      | FilesystemError
+      | PlatformError.PlatformError
+      | ProcessFailed
+      | TunnelNotConfigured
     >;
   }
 >()("yard/services/Binaries") {
@@ -199,7 +212,8 @@ export class Binaries extends Context.Service<
       const installPinned = Effect.fn("Binaries.installPinned")(function* (name: BinaryName) {
         const arch = detectSupportedArch(process.arch);
         if (arch === undefined) {
-          return yield* new TunnelNotConfigured({
+          return yield* new BinaryUnavailable({
+            name,
             message: `Unsupported architecture: ${process.arch}`,
           });
         }
@@ -211,8 +225,10 @@ export class Binaries extends Context.Service<
         const bytes = yield* downloadBytes(download.url).pipe(
           Effect.mapError(
             (error) =>
-              new TunnelNotConfigured({
-                message: `Failed to download ${download.url}: ${String(error)}`,
+              new BinaryUnavailable({
+                name,
+                url: download.url,
+                message: `Failed to download pinned binary; check network/proxy access: ${String(error)}`,
               }),
           ),
         );

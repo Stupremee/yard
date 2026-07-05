@@ -1,6 +1,7 @@
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import { Command, Flag } from "effect/unstable/cli";
+import { ConfigInvalid } from "../domain/errors.js";
 import { Output } from "../services/Output.js";
 import { appUnitName } from "../services/Systemd.js";
 import { Systemd } from "../services/Systemd.js";
@@ -10,8 +11,15 @@ export const selectLogProcess = (
   processes: ReadonlyArray<string>,
   ports: Readonly<Record<string, number>>,
   requested?: string,
-): string => {
-  if (requested !== undefined) return requested;
+): string | ConfigInvalid => {
+  if (requested !== undefined) {
+    return processes.includes(requested)
+      ? requested
+      : new ConfigInvalid({
+          path: "--process",
+          error: new Error(`Unknown process ${requested}; available: ${processes.join(", ")}`),
+        });
+  }
   if (processes.length === 1 && processes[0] !== undefined) return processes[0];
   if (processes.includes("web")) return "web";
   const routed = Object.keys(ports).find((name) => processes.includes(name));
@@ -35,6 +43,9 @@ export const logsCommand = Command.make(
       instance.ports,
       Option.getOrUndefined(requestedProcess),
     );
+    if (typeof processName !== "string") {
+      return yield* processName;
+    }
     const unit = appUnitName(context.slug, processName);
     const isJson = yield* output.isJson();
     if (follow) {

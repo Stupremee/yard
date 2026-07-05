@@ -25,6 +25,15 @@ export class TunnelNotConfigured extends Schema.TaggedErrorClass<TunnelNotConfig
   },
 ) {}
 
+export class BinaryUnavailable extends Schema.TaggedErrorClass<BinaryUnavailable>()(
+  "BinaryUnavailable",
+  {
+    name: Schema.String,
+    message: Schema.String,
+    url: Schema.optional(Schema.String),
+  },
+) {}
+
 export class StateLocked extends Schema.TaggedErrorClass<StateLocked>()("StateLocked", {
   path: Schema.String,
   pid: Schema.optional(Schema.Finite),
@@ -39,6 +48,13 @@ export class InstanceNotFound extends Schema.TaggedErrorClass<InstanceNotFound>(
   "InstanceNotFound",
   {
     slug: Schema.String,
+  },
+) {}
+
+export class NoInstanceForWorktree extends Schema.TaggedErrorClass<NoInstanceForWorktree>()(
+  "NoInstanceForWorktree",
+  {
+    worktreeRoot: Schema.String,
   },
 ) {}
 

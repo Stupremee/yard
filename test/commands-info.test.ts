@@ -81,5 +81,9 @@ describe("command info helpers", () => {
     expect(selectLogProcess(["worker"], {}, undefined)).toBe("worker");
     expect(selectLogProcess(["api", "web"], { web: 3100 }, undefined)).toBe("web");
     expect(selectLogProcess(["api", "worker"], { api: 3100 }, undefined)).toBe("api");
+    expect(selectLogProcess(["web"], { web: 3100 }, "typo")).toMatchObject({
+      _tag: "ConfigInvalid",
+      path: "--process",
+    });
   });
 });

@@ -114,6 +114,9 @@ const atomicWriteString = (
       );
   });
 
+export const expandHome = (value: string) =>
+  value.startsWith("~/") ? `${process.env.HOME ?? ""}/${value.slice(2)}` : value;
+
 export class Tunnel extends Context.Service<
   Tunnel,
   {
@@ -152,12 +155,10 @@ export class Tunnel extends Context.Service<
         return yield* Effect.scoped(
           Effect.gen(function* () {
             const handle = yield* spawner.spawn(ChildProcess.make(cloudflared, [...args]));
-            const stdout = yield* decodeStream(handle.stdout).pipe(
-              Effect.mapError((error) => new TunnelNotConfigured({ message: String(error) })),
-            );
-            const stderr = yield* decodeStream(handle.stderr).pipe(
-              Effect.mapError((error) => new TunnelNotConfigured({ message: String(error) })),
-            );
+            const [stdout, stderr] = yield* Effect.all(
+              [decodeStream(handle.stdout), decodeStream(handle.stderr)],
+              { concurrency: 2 },
+            ).pipe(Effect.mapError((error) => new TunnelNotConfigured({ message: String(error) })));
             const exitCode = yield* handle.exitCode.pipe(
               Effect.mapError((error) => new TunnelNotConfigured({ message: String(error) })),
             );
@@ -250,7 +251,7 @@ export class Tunnel extends Context.Service<
           const paths = yield* xdg.paths();
           const tunnelConfig = renderTunnelConfig({
             tunnelId: config.tunnel.id,
-            credentialsFile: config.tunnel.credentialsFile,
+            credentialsFile: expandHome(config.tunnel.credentialsFile),
             zone: config.zone,
             caddyHttpPort: config.caddyHttpPort,
           });

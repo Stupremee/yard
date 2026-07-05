@@ -92,13 +92,25 @@ const root = Command.make("yard").pipe(
 const providedRoot = root.pipe(Command.provide(completeAppLayer));
 const runtimeLayer = Layer.merge(FetchHttpClient.layer, NodeServices.layer);
 
+const serializeCause = (value: unknown): unknown => {
+  if (value instanceof Error) {
+    return { name: value.name, message: value.message };
+  }
+  if (typeof value === "object" && value !== null && "_tag" in value) {
+    return errorPayload(value);
+  }
+  return value;
+};
+
 const errorPayload = (error: unknown) => {
   if (typeof error === "object" && error !== null && "_tag" in error) {
     const record = error as Record<string, unknown>;
-    return {
-      error: String(record._tag),
-      ...Object.fromEntries(Object.entries(record).filter(([key]) => key !== "_tag")),
-    };
+    const fields = Object.fromEntries(
+      Object.entries(record)
+        .filter(([key]) => key !== "_tag")
+        .map(([key, value]) => [key === "error" ? "cause" : key, serializeCause(value)]),
+    );
+    return { ...fields, error: String(record._tag) };
   }
   if (error instanceof Error) {
     return { error: error.name, message: error.message };
@@ -137,6 +149,13 @@ const errorMessage = (error: unknown): string => {
     }
     if (record._tag === "TunnelNotConfigured") {
       return `Cloudflare tunnel not configured: ${String(record.message)} (run \`yard init --zone <zone>\`)`;
+    }
+    if (record._tag === "BinaryUnavailable") {
+      const url = record.url === undefined ? "" : ` (${String(record.url)})`;
+      return `Binary unavailable for ${String(record.name)}${url}: ${String(record.message)}`;
+    }
+    if (record._tag === "NoInstanceForWorktree") {
+      return `No yard instance for this worktree: ${String(record.worktreeRoot)} (run \`yard up\`)`;
     }
     if (record._tag === "FilesystemError") {
       return `Filesystem error during ${String(record.operation)} at ${String(record.path)}: ${nestedMessage(record.error)}`;

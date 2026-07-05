@@ -52,7 +52,10 @@ const tryAcquireLockFile = (
     if (Number.isFinite(pid) && isPidAlive(pid)) {
       return { acquired: false, pid } as const;
     }
-    yield* fs.remove(file, { force: true }).pipe(Effect.orDie);
+    const beforeRemovePid = yield* readLockPid(fs, file);
+    if (beforeRemovePid === pid) {
+      yield* fs.remove(file, { force: true }).pipe(Effect.orDie);
+    }
     return yield* tryAcquireLockFile(fs, path, file);
   });
 
@@ -100,7 +103,13 @@ export class Lock extends Context.Service<
           return yield* Effect.acquireUseRelease(
             acquireLockFile(fs, path, paths.lockFile),
             () => effect,
-            () => fs.remove(paths.lockFile, { force: true }).pipe(Effect.orDie),
+            () =>
+              Effect.gen(function* () {
+                const pid = yield* readLockPid(fs, paths.lockFile);
+                if (pid === process.pid) {
+                  yield* fs.remove(paths.lockFile, { force: true }).pipe(Effect.orDie);
+                }
+              }),
           );
         }),
       };

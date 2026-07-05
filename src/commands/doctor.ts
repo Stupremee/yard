@@ -12,6 +12,7 @@ import { Output } from "../services/Output.js";
 import { StateStore } from "../services/StateStore.js";
 import { Systemd } from "../services/Systemd.js";
 import { Tunnel } from "../services/Tunnel.js";
+import { expandHome } from "../services/Tunnel.js";
 
 export type DoctorCheck = {
   readonly name: string;
@@ -58,8 +59,9 @@ const runCommand = (command: string, args: ReadonlyArray<string>) =>
     Effect.gen(function* () {
       const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
       const handle = yield* spawner.spawn(ChildProcess.make(command, [...args]));
-      yield* Stream.runDrain(handle.stdout);
-      yield* Stream.runDrain(handle.stderr);
+      yield* Effect.all([Stream.runDrain(handle.stdout), Stream.runDrain(handle.stderr)], {
+        concurrency: 2,
+      });
       const exitCode = yield* handle.exitCode;
       if (Number(exitCode) !== 0) {
         return yield* new DoctorProbeFailed({
@@ -87,8 +89,10 @@ export const runCommandOutput = (command: string, args: ReadonlyArray<string>) =
     Effect.gen(function* () {
       const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
       const handle = yield* spawner.spawn(ChildProcess.make(command, [...args]));
-      const stdout = yield* streamText(handle.stdout);
-      const stderr = yield* streamText(handle.stderr);
+      const [stdout, stderr] = yield* Effect.all(
+        [streamText(handle.stdout), streamText(handle.stderr)],
+        { concurrency: 2 },
+      );
       const exitCode = yield* handle.exitCode;
       if (Number(exitCode) !== 0) {
         return yield* new DoctorProbeFailed({
@@ -240,15 +244,15 @@ export const collectDoctorChecks = Effect.fn("commands.doctor.collectDoctorCheck
       ),
       check(
         "tunnel credentials",
-        fs
-          .exists(config.tunnel.credentialsFile)
-          .pipe(
-            Effect.flatMap((exists) =>
-              exists
-                ? Effect.succeed("present")
-                : new DoctorProbeFailed({ message: `missing ${config.tunnel.credentialsFile}` }),
-            ),
+        fs.exists(expandHome(config.tunnel.credentialsFile)).pipe(
+          Effect.flatMap((exists) =>
+            exists
+              ? Effect.succeed("present")
+              : new DoctorProbeFailed({
+                  message: `missing ${expandHome(config.tunnel.credentialsFile)}`,
+                }),
           ),
+        ),
       ),
     ],
     { concurrency: "unbounded" },

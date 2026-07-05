@@ -45,10 +45,13 @@ const decodeStream = Effect.fn("Systemd.decodeStream")(function* (
   return new TextDecoder().decode(bytes);
 });
 
-const shellSingleQuote = (value: string): string => `'${value.replaceAll("'", "'\\''")}'`;
+const escapeSystemdSpecifiers = (value: string): string => value.replaceAll("%", "%%");
+
+const shellSingleQuote = (value: string): string =>
+  `'${escapeSystemdSpecifiers(value).replaceAll("'", "'\\''")}'`;
 
 const systemdQuote = (value: string | number): string => {
-  const text = String(value);
+  const text = escapeSystemdSpecifiers(String(value));
   return `"${text.replaceAll("\\", "\\\\").replaceAll('"', '\\"').replaceAll("\n", "\\n")}"`;
 };
 
@@ -189,8 +192,10 @@ export class Systemd extends Context.Service<
         return yield* Effect.scoped(
           Effect.gen(function* () {
             const handle = yield* spawner.spawn(ChildProcess.make(command, [...args]));
-            const stdout = yield* decodeStream(handle.stdout);
-            const stderr = yield* decodeStream(handle.stderr);
+            const [stdout, stderr] = yield* Effect.all(
+              [decodeStream(handle.stdout), decodeStream(handle.stderr)],
+              { concurrency: 2 },
+            );
             const exitCode = yield* handle.exitCode;
             if (exitCode !== ChildProcessSpawner.ExitCode(0)) {
               return yield* new ProcessFailed({
@@ -226,8 +231,10 @@ export class Systemd extends Context.Service<
         return yield* Effect.scoped(
           Effect.gen(function* () {
             const handle = yield* spawner.spawn(ChildProcess.make(command, [...args]));
-            yield* Stream.runForEach(handle.stdout, onChunk);
-            const stderr = yield* decodeStream(handle.stderr);
+            const [, stderr] = yield* Effect.all(
+              [Stream.runForEach(handle.stdout, onChunk), decodeStream(handle.stderr)],
+              { concurrency: 2 },
+            );
             const exitCode = yield* handle.exitCode;
             if (exitCode !== ChildProcessSpawner.ExitCode(0)) {
               return yield* new ProcessFailed({

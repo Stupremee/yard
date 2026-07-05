@@ -54,4 +54,29 @@ describe("init config", () => {
       credentialsFile: "/state/tunnel-credentials.json",
     });
   });
+
+  it("preserves customized settings when building config from an existing init", () => {
+    const existing = buildInitConfig({
+      zone: "old.test",
+      tunnelId: "old-tunnel",
+      credentialsFile: "/old/credentials.json",
+    });
+    const next = buildInitConfig({
+      zone: "new.test",
+      tunnelId: "new-tunnel",
+      credentialsFile: "/new/credentials.json",
+      existing: {
+        ...existing,
+        caddyHttpPort: 8700,
+        caddyAdminPort: 2020,
+        portRange: [4100, 4199],
+      },
+    });
+
+    expect(next.zone).toBe("new.test");
+    expect(next.tunnel.id).toBe("new-tunnel");
+    expect(next.caddyHttpPort).toBe(8700);
+    expect(next.caddyAdminPort).toBe(2020);
+    expect(next.portRange).toEqual([4100, 4199]);
+  });
 });

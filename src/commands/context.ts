@@ -1,5 +1,5 @@
 import * as Effect from "effect/Effect";
-import { InstanceNotFound, NotAGitRepo } from "../domain/errors.js";
+import { InstanceNotFound, NoInstanceForWorktree, NotAGitRepo } from "../domain/errors.js";
 import { Instance } from "../domain/model.js";
 import { composeInstanceSlug, slugifyRepoName } from "../domain/slug.js";
 import { pickWord } from "../domain/wordlist.js";
@@ -17,10 +17,9 @@ export interface InstanceContext {
 
 const basename = (path: string) => path.replace(/\/+$/, "").split("/").at(-1) ?? path;
 
-export const resolveContext = Effect.fn("commands.context.resolveContext")(function* () {
+const resolveGitContext = Effect.fn("commands.context.resolveGitContext")(function* () {
   const cwd = process.cwd();
   const git = yield* Git;
-  const store = yield* StateStore;
   const worktreeRoot = yield* git
     .repoRoot(cwd)
     .pipe(
@@ -43,25 +42,55 @@ export const resolveContext = Effect.fn("commands.context.resolveContext")(funct
   const primaryRoot = primary.path;
   const isPrimary = worktreeRoot === primaryRoot;
   const repoName = slugifyRepoName(basename(primaryRoot));
-  const state = yield* store.loadInstances();
-  const persisted = Object.entries(state.instances).find(
-    ([, instance]) => instance.worktreeRoot === worktreeRoot,
-  );
-  const word = isPrimary
-    ? null
-    : (persisted?.[1].word ??
-      (yield* pickWord((candidate) =>
-        Object.keys(state.instances).includes(composeInstanceSlug(repoName, candidate)),
-      )));
-  const slug = composeInstanceSlug(repoName, word);
-
   return {
-    slug,
     repoName,
-    word,
     worktreeRoot,
     primaryRoot,
     isPrimary,
+  };
+});
+
+export const resolveContext = Effect.fn("commands.context.resolveContext")(function* () {
+  const base = yield* resolveGitContext();
+  const store = yield* StateStore;
+  const state = yield* store.loadInstances();
+  const persisted = Object.entries(state.instances).find(
+    ([, instance]) => instance.worktreeRoot === base.worktreeRoot,
+  );
+  if (base.isPrimary) {
+    return {
+      ...base,
+      slug: composeInstanceSlug(base.repoName, null),
+      word: null,
+    } satisfies InstanceContext;
+  }
+  if (persisted === undefined) {
+    return yield* new NoInstanceForWorktree({ worktreeRoot: base.worktreeRoot });
+  }
+  return {
+    ...base,
+    slug: persisted[0],
+    word: persisted[1].word,
+  } satisfies InstanceContext;
+});
+
+export const resolveContextForUp = Effect.fn("commands.context.resolveContextForUp")(function* () {
+  const base = yield* resolveGitContext();
+  const store = yield* StateStore;
+  const state = yield* store.loadInstances();
+  const persisted = Object.entries(state.instances).find(
+    ([, instance]) => instance.worktreeRoot === base.worktreeRoot,
+  );
+  const word = base.isPrimary
+    ? null
+    : (persisted?.[1].word ??
+      (yield* pickWord((candidate) =>
+        Object.keys(state.instances).includes(composeInstanceSlug(base.repoName, candidate)),
+      )));
+  return {
+    ...base,
+    slug: persisted?.[0] ?? composeInstanceSlug(base.repoName, word),
+    word,
   } satisfies InstanceContext;
 });
 

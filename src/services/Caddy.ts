@@ -27,6 +27,9 @@ export type CaddyJsonConfig = {
       readonly servers: {
         readonly yard: {
           readonly listen: ReadonlyArray<string>;
+          readonly automatic_https: {
+            readonly disable: true;
+          };
           readonly routes: ReadonlyArray<CaddyRoute>;
         };
       };
@@ -105,6 +108,14 @@ const catchAllRoute = (): CaddyRoute => ({
 const sortedEntries = <A>(record: Readonly<Record<string, A>>) =>
   Object.entries(record).sort(([left], [right]) => left.localeCompare(right));
 
+const stoppedInstances = (instances: CaddyInstances): CaddyInstances =>
+  Object.fromEntries(
+    Object.entries(instances).map(([slug, value]) => {
+      const state = normalizeInstanceState(value);
+      return [slug, { instance: state.instance, running: false }];
+    }),
+  );
+
 export const generateCaddyConfig = (
   globalConfig: GlobalConfig,
   instances: CaddyInstances,
@@ -144,6 +155,7 @@ export const generateCaddyConfig = (
         servers: {
           yard: {
             listen: [`127.0.0.1:${globalConfig.caddyHttpPort}`],
+            automatic_https: { disable: true },
             routes,
           },
         },
@@ -258,8 +270,8 @@ export class Caddy extends Context.Service<
         instances: CaddyInstances,
       ) {
         const config = generateCaddyConfig(globalConfig, instances);
-        yield* persistConfig(config);
         yield* loadConfig(globalConfig, config);
+        yield* persistConfig(generateCaddyConfig(globalConfig, stoppedInstances(instances)));
       });
 
       return {

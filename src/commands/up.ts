@@ -16,7 +16,7 @@ import { Ports } from "../services/Ports.js";
 import { RepoConfig as RepoConfigService } from "../services/RepoConfig.js";
 import { StateStore } from "../services/StateStore.js";
 import { Systemd } from "../services/Systemd.js";
-import { resolveContext, type InstanceContext } from "./context.js";
+import { resolveContextForUp, type InstanceContext } from "./context.js";
 
 export type PortPlan = {
   readonly routedProcess: string;
@@ -309,11 +309,25 @@ export const startInstanceUnits = Effect.fn("commands.lifecycle.startInstanceUni
   }
 });
 
+const removeVanishedProcessUnits = Effect.fn("commands.lifecycle.removeVanishedProcessUnits")(
+  function* (context: InstanceContext, previous: Instance | undefined, current: Instance) {
+    if (previous === undefined) return;
+    const systemd = yield* Systemd;
+    const currentProcesses = new Set(current.processes);
+    const removed = previous.processes.filter((processName) => !currentProcesses.has(processName));
+    if (removed.length === 0) return;
+    for (const processName of removed) {
+      yield* systemd.stop(appUnitName(context.slug, processName)).pipe(Effect.ignore);
+      yield* systemd.resetFailed(appUnitName(context.slug, processName)).pipe(Effect.ignore);
+    }
+    yield* systemd.removeAppDropins(context.slug, removed);
+  },
+);
+
 const runUp = Effect.fn("commands.up.run")(function* (options: {
   readonly noWait: boolean;
   readonly port: Option.Option<number>;
 }) {
-  const context = yield* resolveContext();
   const lock = yield* Lock;
   const store = yield* StateStore;
   const repoConfig = yield* RepoConfigService;
@@ -324,11 +338,13 @@ const runUp = Effect.fn("commands.up.run")(function* (options: {
   const result = yield* lock.withMutationLock(
     Effect.gen(function* () {
       const globalConfig = yield* store.loadGlobalConfig();
+      const context = yield* resolveContextForUp();
       const config = yield* repoConfig.resolve(context.worktreeRoot);
       if (!Object.hasOwn(config.processes, buildPortPlan(config).routedProcess)) {
         return yield* failInvalid("Routed process does not exist");
       }
       const state = yield* store.loadInstances();
+      const previousInstance = state.instances[context.slug];
       const nextState = yield* adoptOrCreateInstance(
         state,
         context,
@@ -354,6 +370,7 @@ const runUp = Effect.fn("commands.up.run")(function* (options: {
         instance,
         Option.isSome(options.port),
       );
+      yield* removeVanishedProcessUnits(context, previousInstance, instance);
       yield* caddy.syncConfig(
         globalConfig,
         yield* deriveCaddyInstances(nextState.instances, {
@@ -365,7 +382,7 @@ const runUp = Effect.fn("commands.up.run")(function* (options: {
       if (routedPort === undefined) {
         return yield* failInvalid(`Instance ${context.slug} has no routed port`);
       }
-      return { globalConfig, instance, envActions, routedPort };
+      return { context, globalConfig, instance, envActions, routedPort };
     }),
   );
 
@@ -374,7 +391,7 @@ const runUp = Effect.fn("commands.up.run")(function* (options: {
   const ready = options.noWait ? undefined : yield* waitForHttpReady(result.routedPort);
   const summary = lifecycleSummary({
     command: "up",
-    slug: context.slug,
+    slug: result.context.slug,
     globalConfig: result.globalConfig,
     instance: result.instance,
     envActions: result.envActions,

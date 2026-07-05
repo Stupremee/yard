@@ -1,5 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 import {
+  expandHome,
   parseRouteDnsOutput,
   parseTunnelCreateOutput,
   parseTunnelList,
@@ -24,6 +25,20 @@ ingress:
     service: http://127.0.0.1:8600
   - service: http_status:404
 `);
+  });
+
+  it("expands home-directory credentials paths before writing cloudflared config", () => {
+    const oldHome = process.env.HOME;
+    process.env.HOME = "/home/tester";
+    try {
+      expect(expandHome("~/.local/state/yard/tunnel-credentials.json")).toBe(
+        "/home/tester/.local/state/yard/tunnel-credentials.json",
+      );
+      expect(expandHome("/tmp/credentials.json")).toBe("/tmp/credentials.json");
+    } finally {
+      if (oldHome === undefined) delete process.env.HOME;
+      else process.env.HOME = oldHome;
+    }
   });
 
   it("parses tunnel create output with UUID and credentials path", () => {

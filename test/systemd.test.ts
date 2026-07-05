@@ -47,6 +47,22 @@ describe("Systemd unit rendering", () => {
     expect(output).toContain("ExecStart=/bin/sh -lc 'echo '\\''$PORT'\\'' && vp run dev'");
   });
 
+  it("escapes systemd percent specifiers in commands and environment", () => {
+    const output = renderAppDropin({
+      slug: "repo",
+      processName: "web",
+      command: "date +%s && printf '%s\\n' ok",
+      workingDirectory: "/srv/dev/repo",
+      environment: {
+        PORT: 3100,
+        FORMAT: "%s",
+      },
+    });
+
+    expect(output).toContain('Environment="FORMAT=%%s"');
+    expect(output).toContain("ExecStart=/bin/sh -lc 'date +%%s && printf '\\''%%s\\n'\\'' ok'");
+  });
+
   it("escapes app unit instance names via slug helper", () => {
     expect(appUnitName("Repo Name", "web/api")).toBe("yard-app@repo-name--web-api.service");
     expect(appDropinDirectoryName("Repo Name", "web/api")).toBe(
@@ -77,6 +93,16 @@ describe("Systemd unit rendering", () => {
     expect(renderTunnelUnit({ executable: "/usr/bin/cloudflared" })).toContain(
       "WantedBy=default.target",
     );
+  });
+
+  it("escapes daemon unit percent specifiers", () => {
+    expect(
+      renderCaddyUnit({
+        executable: "/bin/date",
+        args: ["+%s"],
+        environment: { FORMAT: "%Y" },
+      }),
+    ).toContain('ExecStart="/bin/date" "+%%s"');
   });
 });
 
