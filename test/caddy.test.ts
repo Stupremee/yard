@@ -12,6 +12,7 @@ import type * as HttpClientError from "effect/unstable/http/HttpClientError";
 import type * as HttpClientRequest from "effect/unstable/http/HttpClientRequest";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import { renderCaddyConfigFromState } from "../src/commands/daemon.ts";
+import { ConfigInvalid } from "../src/domain/errors.ts";
 import { GlobalConfig, Instance, InstancesFile } from "../src/domain/model.ts";
 import {
   Caddy,
@@ -100,11 +101,15 @@ const withTempXdg = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
   Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem;
     const dir = yield* fs.makeTempDirectoryScoped();
+    const oldConfig = process.env.XDG_CONFIG_HOME;
     const oldState = process.env.XDG_STATE_HOME;
+    process.env.XDG_CONFIG_HOME = `${dir}/config`;
     process.env.XDG_STATE_HOME = `${dir}/state`;
     return yield* effect.pipe(
       Effect.ensuring(
         Effect.sync(() => {
+          if (oldConfig === undefined) delete process.env.XDG_CONFIG_HOME;
+          else process.env.XDG_CONFIG_HOME = oldConfig;
           if (oldState === undefined) delete process.env.XDG_STATE_HOME;
           else process.env.XDG_STATE_HOME = oldState;
         }),
@@ -140,8 +145,11 @@ const renderLayer = (activeUnits: ReadonlySet<string>) => {
   const caddyLayer = Caddy.layer.pipe(Layer.provide(Xdg.layer), Layer.provide(httpLayer));
   const stateStoreLayer = StateStore.layer.pipe(Layer.provide(Xdg.layer));
   return Layer.merge(
-    caddyLayer,
-    Layer.merge(stateStoreLayer, Layer.merge(systemdLayer, Output.layer(false))),
+    Xdg.layer,
+    Layer.merge(
+      caddyLayer,
+      Layer.merge(stateStoreLayer, Layer.merge(systemdLayer, Output.layer(false))),
+    ),
   ).pipe(Layer.provide(NodeServices.layer));
 };
 
@@ -378,6 +386,50 @@ describe("yard caddy render", () => {
           handler: "static_response",
           status_code: "404",
         });
+      }).pipe(Effect.provide(renderLayer(new Set()))),
+    ),
+  );
+
+  it.effect("fails when the global config file is malformed", () =>
+    withTempXdg(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const xdg = yield* Xdg;
+        const paths = yield* xdg.paths();
+        yield* fs.makeDirectory(paths.configDir, { recursive: true });
+        yield* fs.writeFileString(paths.configFile, "{");
+
+        const exit = yield* Effect.exit(renderCaddyConfigFromState());
+
+        expect(exit._tag).toBe("Failure");
+        if (exit._tag === "Failure") {
+          const error = yield* Effect.failCause(exit.cause).pipe(Effect.flip);
+          expect(error).toBeInstanceOf(ConfigInvalid);
+          expect(error.path).toBe(paths.configFile);
+        }
+      }).pipe(Effect.provide(renderLayer(new Set()))),
+    ),
+  );
+
+  it.effect("fails when the instances state file is malformed", () =>
+    withTempXdg(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const store = yield* StateStore;
+        const xdg = yield* Xdg;
+        const paths = yield* xdg.paths();
+        yield* store.saveGlobalConfig(globalConfig);
+        yield* fs.makeDirectory(paths.stateDir, { recursive: true });
+        yield* fs.writeFileString(paths.instancesFile, "{");
+
+        const exit = yield* Effect.exit(renderCaddyConfigFromState());
+
+        expect(exit._tag).toBe("Failure");
+        if (exit._tag === "Failure") {
+          const error = yield* Effect.failCause(exit.cause).pipe(Effect.flip);
+          expect(error).toBeInstanceOf(ConfigInvalid);
+          expect(error.path).toBe(paths.instancesFile);
+        }
       }).pipe(Effect.provide(renderLayer(new Set()))),
     ),
   );

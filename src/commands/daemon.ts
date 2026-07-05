@@ -1,10 +1,13 @@
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import { Command, Flag } from "effect/unstable/cli";
+import { FilesystemError } from "../domain/errors.ts";
 import { GlobalConfig } from "../domain/model.ts";
 import { Caddy } from "../services/Caddy.ts";
 import { Output } from "../services/Output.ts";
 import { StateStore } from "../services/StateStore.ts";
 import { Systemd } from "../services/Systemd.ts";
+import { Xdg } from "../services/Xdg.ts";
 import { deriveCaddyInstances } from "./up.ts";
 
 type DaemonName = "caddy" | "tunnel";
@@ -77,14 +80,33 @@ export const renderCaddyConfigFromState = Effect.fn("commands.daemon.renderCaddy
   function* () {
     const caddy = yield* Caddy;
     const state = yield* StateStore;
+    const xdg = yield* Xdg;
+    const fs = yield* FileSystem.FileSystem;
+    const paths = yield* xdg.paths();
 
-    const globalConfig = yield* state
-      .loadGlobalConfig()
-      .pipe(
-        Effect.catch((error) =>
-          error._tag === "ConfigInvalid" ? Effect.succeed(baselineConfig()) : Effect.fail(error),
-        ),
-      );
+    const globalConfig = yield* state.loadGlobalConfig().pipe(
+      Effect.catch((error) =>
+        Effect.gen(function* () {
+          if (error._tag !== "ConfigInvalid") {
+            return yield* error;
+          }
+          const exists = yield* fs.exists(paths.configFile).pipe(
+            Effect.mapError(
+              (cause) =>
+                new FilesystemError({
+                  path: paths.configFile,
+                  operation: "exists",
+                  error: cause,
+                }),
+            ),
+          );
+          if (exists) {
+            return yield* error;
+          }
+          return baselineConfig();
+        }),
+      ),
+    );
     const instances = yield* state.loadInstances();
     const config = caddy.generateConfig(
       globalConfig,
