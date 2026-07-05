@@ -105,6 +105,61 @@ describe("StateStore", () => {
   );
 });
 
+describe("Xdg", () => {
+  it.effect("treats empty XDG variables as unset", () =>
+    withTempXdg(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const home = yield* fs.makeTempDirectoryScoped();
+        const oldHome = process.env.HOME;
+        return yield* Effect.gen(function* () {
+          process.env.HOME = home;
+          process.env.XDG_CONFIG_HOME = "";
+          process.env.XDG_STATE_HOME = "";
+          process.env.XDG_DATA_HOME = "";
+          const xdg = yield* Xdg;
+          const paths = yield* xdg.paths();
+          expect(paths.configFile).toBe(`${home}/.config/yard/config.json`);
+          expect(paths.instancesFile).toBe(`${home}/.local/state/yard/instances.json`);
+          expect(paths.shareBinDir).toBe(`${home}/.local/share/yard/bin`);
+        }).pipe(
+          Effect.ensuring(
+            Effect.sync(() => {
+              if (oldHome === undefined) delete process.env.HOME;
+              else process.env.HOME = oldHome;
+            }),
+          ),
+        );
+      }).pipe(Effect.provide(lockLayer)),
+    ),
+  );
+
+  it.effect("falls back to /tmp when HOME is empty", () =>
+    withTempXdg(
+      Effect.gen(function* () {
+        const oldHome = process.env.HOME;
+        return yield* Effect.gen(function* () {
+          delete process.env.XDG_CONFIG_HOME;
+          delete process.env.XDG_STATE_HOME;
+          delete process.env.XDG_DATA_HOME;
+          process.env.HOME = "";
+          const xdg = yield* Xdg;
+          const paths = yield* xdg.paths();
+          expect(paths.configFile).toBe("/tmp/.config/yard/config.json");
+          expect(paths.instancesFile).toBe("/tmp/.local/state/yard/instances.json");
+        }).pipe(
+          Effect.ensuring(
+            Effect.sync(() => {
+              if (oldHome === undefined) delete process.env.HOME;
+              else process.env.HOME = oldHome;
+            }),
+          ),
+        );
+      }).pipe(Effect.provide(lockLayer)),
+    ),
+  );
+});
+
 describe("Lock", () => {
   it("detects current pid as alive", () => {
     expect(isPidAlive(process.pid)).toBe(true);
@@ -133,10 +188,34 @@ describe("Lock", () => {
           expect(live._tag).toBe("Failure");
 
           yield* fs.writeFileString(paths.lockFile, "99999999\n");
-          expect(yield* lock.withMutationLock(Effect.succeed("ok"))).toBe("ok");
+          expect(yield* TestClock.withLive(lock.withMutationLock(Effect.succeed("ok")))).toBe("ok");
           expect(yield* fs.exists(paths.lockFile)).toBe(false);
         }).pipe(Effect.provide(lockLayer)),
       ),
     10_000,
+  );
+
+  it.effect("treats empty and garbage lock files as stale", () =>
+    withTempXdg(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const xdg = yield* Xdg;
+        const paths = yield* xdg.paths();
+        yield* fs.makeDirectory(paths.stateDir, { recursive: true });
+        const lock = yield* Lock;
+
+        yield* fs.writeFileString(paths.lockFile, "");
+        expect(yield* TestClock.withLive(lock.withMutationLock(Effect.succeed("empty-ok")))).toBe(
+          "empty-ok",
+        );
+        expect(yield* fs.exists(paths.lockFile)).toBe(false);
+
+        yield* fs.writeFileString(paths.lockFile, "not-a-pid\n");
+        expect(yield* TestClock.withLive(lock.withMutationLock(Effect.succeed("garbage-ok")))).toBe(
+          "garbage-ok",
+        );
+        expect(yield* fs.exists(paths.lockFile)).toBe(false);
+      }).pipe(Effect.provide(lockLayer)),
+    ),
   );
 });

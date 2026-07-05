@@ -3,9 +3,17 @@ import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
-import { GlobalConfig, Instance, ProcessSpec, RepoConfig, RouteSpec } from "../src/domain/model.ts";
+import {
+  GlobalConfig,
+  Instance,
+  InstancesFile,
+  ProcessSpec,
+  RepoConfig,
+  RouteSpec,
+} from "../src/domain/model.ts";
 import {
   allocatePorts,
+  assertNoPrimarySlugCollision,
   buildPortPlan,
   buildProcessEnvironment,
   lifecycleSummary,
@@ -192,4 +200,38 @@ describe("command lifecycle helpers", () => {
       "ready: yes",
     ]);
   });
+
+  it.effect("rejects primary repos that slugify to an existing primary instance", () =>
+    Effect.gen(function* () {
+      const state = new InstancesFile({
+        version: 1,
+        instances: {
+          "my-repo": new Instance({
+            repoName: "my-repo",
+            word: null,
+            worktreeRoot: "/srv/my.repo",
+            primaryRoot: "/srv/my.repo",
+            ports: { web: 3100 },
+            processes: ["web"],
+            routedProcess: "web",
+            createdAt: "2026-01-01T00:00:00.000Z",
+            updatedAt: "2026-01-01T00:00:00.000Z",
+          }),
+        },
+      });
+      const error = yield* Effect.flip(
+        assertNoPrimarySlugCollision(state, {
+          slug: "my-repo",
+          repoName: "my-repo",
+          word: null,
+          worktreeRoot: "/srv/my-repo",
+          primaryRoot: "/srv/my-repo",
+          isPrimary: true,
+        }),
+      );
+      expect(error._tag).toBe("ConfigInvalid");
+      expect(error.error).toBeInstanceOf(Error);
+      expect((error.error as Error).message).toContain("already used by primary root");
+    }),
+  );
 });

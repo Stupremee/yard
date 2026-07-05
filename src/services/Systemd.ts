@@ -24,6 +24,7 @@ export type DaemonUnitInput = {
   readonly execStartPre?: ReadonlyArray<{
     readonly executable: string;
     readonly args?: ReadonlyArray<string>;
+    readonly ignoreFailure?: boolean;
   }>;
   readonly workingDirectory?: string;
   readonly environment?: Readonly<Record<string, string | number>>;
@@ -103,7 +104,12 @@ const renderDaemonUnit = (description: string, input: DaemonUnitInput): string =
     ...environment.map(envLine),
     ...(input.execStartPre ?? []).map(
       (preStart) =>
-        `ExecStartPre=${[preStart.executable, ...(preStart.args ?? [])].map(systemdQuote).join(" ")}`,
+        `ExecStartPre=${preStart.ignoreFailure === true ? "-" : ""}${[
+          preStart.executable,
+          ...(preStart.args ?? []),
+        ]
+          .map(systemdQuote)
+          .join(" ")}`,
     ),
     `ExecStart=${[input.executable, ...args].map(systemdQuote).join(" ")}`,
     "Restart=on-failure",

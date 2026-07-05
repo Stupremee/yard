@@ -12,7 +12,10 @@ export type XdgPaths = {
   readonly shareBinDir: string;
 };
 
-const homeDir = () => process.env.HOME ?? "/tmp";
+const envOrDefault = (value: string | undefined, fallback: string): string =>
+  value === undefined || value === "" ? fallback : value;
+
+const homeDir = () => envOrDefault(process.env.HOME, "/tmp");
 
 export class Xdg extends Context.Service<
   Xdg,
@@ -27,9 +30,19 @@ export class Xdg extends Context.Service<
       return {
         paths: Effect.fn("Xdg.paths")(() =>
           Effect.sync(() => {
-            const configHome = process.env.XDG_CONFIG_HOME ?? path.join(homeDir(), ".config");
-            const stateHome = process.env.XDG_STATE_HOME ?? path.join(homeDir(), ".local", "state");
-            const dataHome = process.env.XDG_DATA_HOME ?? path.join(homeDir(), ".local", "share");
+            const home = homeDir();
+            const configHome = envOrDefault(
+              process.env.XDG_CONFIG_HOME,
+              path.join(home, ".config"),
+            );
+            const stateHome = envOrDefault(
+              process.env.XDG_STATE_HOME,
+              path.join(home, ".local", "state"),
+            );
+            const dataHome = envOrDefault(
+              process.env.XDG_DATA_HOME,
+              path.join(home, ".local", "share"),
+            );
             const configDir = path.join(configHome, "yard");
             const stateDir = path.join(stateHome, "yard");
             return {

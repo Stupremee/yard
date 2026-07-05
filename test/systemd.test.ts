@@ -80,6 +80,7 @@ describe("Systemd unit rendering", () => {
           {
             executable: "/usr/bin/node",
             args: ["/opt/yard/bin.mjs", "caddy", "render"],
+            ignoreFailure: true,
           },
         ],
         environment: { X: 'quote"back\\slash' },
@@ -90,7 +91,7 @@ describe("Systemd unit rendering", () => {
 
       [Service]
       Environment="X=quote\\"back\\\\slash"
-      ExecStartPre="/usr/bin/node" "/opt/yard/bin.mjs" "caddy" "render"
+      ExecStartPre=-"/usr/bin/node" "/opt/yard/bin.mjs" "caddy" "render"
       ExecStart="/usr/bin/caddy" "run" "--config" "/state/caddy.json"
       Restart=on-failure
 

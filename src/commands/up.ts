@@ -178,6 +178,19 @@ const assertNoHostnameCollisions = (
   return Effect.void;
 };
 
+export const assertNoPrimarySlugCollision = (
+  state: InstancesFile,
+  context: InstanceContext,
+): Effect.Effect<void, ConfigInvalid> => {
+  const existing = state.instances[context.slug];
+  if (context.isPrimary && existing !== undefined && existing.primaryRoot !== context.primaryRoot) {
+    return failInvalid(
+      `Repo slug "${context.slug}" is already used by primary root ${existing.primaryRoot}; current primary root is ${context.primaryRoot}. Rename one repo directory or remove the stale yard instance manually.`,
+    );
+  }
+  return Effect.void;
+};
+
 export const allocatePorts = Effect.fn("commands.lifecycle.allocatePorts")(function* (
   slug: string,
   config: RepoConfig,
@@ -369,6 +382,7 @@ const runUp = Effect.fn("commands.up.run")(function* (options: {
         return yield* failInvalid("Routed process does not exist");
       }
       const state = yield* store.loadInstances();
+      yield* assertNoPrimarySlugCollision(state, context);
       const previousInstance = state.instances[context.slug];
       const nextState = yield* adoptOrCreateInstance(
         state,

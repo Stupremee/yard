@@ -90,4 +90,21 @@ describe("RepoConfig", () => {
       }).pipe(Effect.provide(testLayer)),
     ),
   );
+
+  it.effect("rejects routes that reference undeclared processes", () =>
+    withTempDir((dir) =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        yield* fs.writeFileString(
+          `${dir}/yard.json`,
+          `{"processes":{"web":{"command":"vp run dev","route":true}},"routes":{"api":{"process":"missing","portEnv":"API_PORT"}}}`,
+        );
+        const service = yield* RepoConfig;
+        const error = yield* Effect.flip(service.resolve(dir));
+        expect(error._tag).toBe("ConfigInvalid");
+        expect(error.error).toBeInstanceOf(Error);
+        expect((error.error as Error).message).toContain("unknown process");
+      }).pipe(Effect.provide(testLayer)),
+    ),
+  );
 });

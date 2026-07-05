@@ -21,7 +21,12 @@ const isAlreadyExists = (error: PlatformError.PlatformError) =>
 
 const readLockPid = (fs: FileSystem.FileSystem, file: string) =>
   Effect.gen(function* () {
-    return Number.parseInt(yield* fs.readFileString(file).pipe(Effect.orElseSucceed(() => "")), 10);
+    const text = (yield* fs.readFileString(file).pipe(Effect.orElseSucceed(() => ""))).trim();
+    if (!/^[0-9]+$/.test(text)) {
+      return undefined;
+    }
+    const pid = Number.parseInt(text, 10);
+    return Number.isFinite(pid) ? pid : undefined;
   });
 
 const staleLockPath = (path: Path.Path, file: string) =>
@@ -30,7 +35,9 @@ const staleLockPath = (path: Path.Path, file: string) =>
 export const lockRetryDelayMillis = 150;
 export const lockRetryTimeoutMillis = 3_000;
 
-type LockAttempt = { readonly acquired: true } | { readonly acquired: false; readonly pid: number };
+type LockAttempt =
+  | { readonly acquired: true }
+  | { readonly acquired: false; readonly pid?: number };
 
 const tryAcquireLockFile = (
   fs: FileSystem.FileSystem,
@@ -41,8 +48,12 @@ const tryAcquireLockFile = (
     yield* fs.makeDirectory(path.dirname(file), { recursive: true }).pipe(Effect.orDie);
     const acquired = yield* Effect.scoped(
       fs.open(file, { flag: "wx", mode: 0o600 }).pipe(
-        Effect.flatMap((handle) => handle.writeAll(new TextEncoder().encode(`${process.pid}\n`))),
-        Effect.as(true),
+        Effect.flatMap((handle) =>
+          handle.writeAll(new TextEncoder().encode(`${process.pid}\n`)).pipe(
+            Effect.as(true),
+            Effect.tapError(() => fs.remove(file, { force: true }).pipe(Effect.orDie)),
+          ),
+        ),
         Effect.catch((error) =>
           isAlreadyExists(error) ? Effect.succeed(false) : Effect.die(error),
         ),
@@ -52,7 +63,7 @@ const tryAcquireLockFile = (
       return { acquired: true } as const;
     }
     const pid = yield* readLockPid(fs, file);
-    if (Number.isFinite(pid) && isPidAlive(pid)) {
+    if (pid !== undefined && isPidAlive(pid)) {
       return { acquired: false, pid } as const;
     }
     const beforeRenamePid = yield* readLockPid(fs, file);
@@ -67,7 +78,7 @@ const tryAcquireLockFile = (
         yield* fs.remove(staleFile, { force: true }).pipe(Effect.orDie);
       }
     }
-    return yield* tryAcquireLockFile(fs, path, file);
+    return pid === undefined ? ({ acquired: false } as const) : ({ acquired: false, pid } as const);
   });
 
 const acquireLockFile = (

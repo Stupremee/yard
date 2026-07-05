@@ -147,6 +147,7 @@ export const initCommand = Command.make(
           {
             executable: process.execPath,
             args: [path.resolve(process.argv[1] ?? "dist/bin.mjs"), "caddy", "render"],
+            ignoreFailure: true,
           },
         ],
       });

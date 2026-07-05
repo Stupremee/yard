@@ -40,6 +40,14 @@ const validateRoutedProcess = (config: RepoConfigModel, source: string) =>
         error: new Error(`Repo config must declare exactly one process with route: true`),
       });
     }
+    for (const [routeName, route] of Object.entries(config.routes)) {
+      if (!Object.hasOwn(config.processes, route.process)) {
+        return yield* new ConfigInvalid({
+          path: source,
+          error: new Error(`Route "${routeName}" references unknown process "${route.process}"`),
+        });
+      }
+    }
     return config;
   });
 
