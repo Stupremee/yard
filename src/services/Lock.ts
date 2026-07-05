@@ -24,11 +24,16 @@ const readLockPid = (fs: FileSystem.FileSystem, file: string) =>
     return Number.parseInt(yield* fs.readFileString(file).pipe(Effect.orElseSucceed(() => "")), 10);
   });
 
-const acquireLockFile = (
+export const lockRetryDelayMillis = 150;
+export const lockRetryTimeoutMillis = 3_000;
+
+type LockAttempt = { readonly acquired: true } | { readonly acquired: false; readonly pid: number };
+
+const tryAcquireLockFile = (
   fs: FileSystem.FileSystem,
   path: Path.Path,
   file: string,
-): Effect.Effect<void, StateLocked> =>
+): Effect.Effect<LockAttempt> =>
   Effect.gen(function* () {
     yield* fs.makeDirectory(path.dirname(file), { recursive: true }).pipe(Effect.orDie);
     const acquired = yield* Effect.scoped(
@@ -41,14 +46,36 @@ const acquireLockFile = (
       ),
     );
     if (acquired) {
-      return;
+      return { acquired: true } as const;
     }
     const pid = yield* readLockPid(fs, file);
     if (Number.isFinite(pid) && isPidAlive(pid)) {
-      return yield* new StateLocked({ path: file, pid });
+      return { acquired: false, pid } as const;
     }
     yield* fs.remove(file, { force: true }).pipe(Effect.orDie);
-    yield* acquireLockFile(fs, path, file);
+    return yield* tryAcquireLockFile(fs, path, file);
+  });
+
+const acquireLockFile = (
+  fs: FileSystem.FileSystem,
+  path: Path.Path,
+  file: string,
+): Effect.Effect<void, StateLocked> =>
+  Effect.gen(function* () {
+    // Another yard command usually finishes quickly, so poll briefly before failing:
+    // parallel `yard up` in different worktrees should queue, not error.
+    let waited = 0;
+    while (true) {
+      const attempt = yield* tryAcquireLockFile(fs, path, file);
+      if (attempt.acquired) {
+        return;
+      }
+      if (waited >= lockRetryTimeoutMillis) {
+        return yield* new StateLocked({ path: file, pid: attempt.pid });
+      }
+      yield* Effect.sleep(`${lockRetryDelayMillis} millis`);
+      waited += lockRetryDelayMillis;
+    }
   });
 
 export class Lock extends Context.Service<

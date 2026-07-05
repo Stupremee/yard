@@ -149,28 +149,66 @@ export class Tunnel extends Context.Service<
 
       const run = Effect.fn("Tunnel.run")(function* (args: ReadonlyArray<string>) {
         const cloudflared = yield* binaries.resolve("cloudflared").pipe(Effect.orDie);
-        const handle = yield* spawner
-          .spawn(ChildProcess.make(cloudflared, [...args]))
-          .pipe(Effect.scoped);
-        const stdout = yield* decodeStream(handle.stdout).pipe(
-          Effect.mapError((error) => new TunnelNotConfigured({ message: String(error) })),
+        return yield* Effect.scoped(
+          Effect.gen(function* () {
+            const handle = yield* spawner.spawn(ChildProcess.make(cloudflared, [...args]));
+            const stdout = yield* decodeStream(handle.stdout).pipe(
+              Effect.mapError((error) => new TunnelNotConfigured({ message: String(error) })),
+            );
+            const stderr = yield* decodeStream(handle.stderr).pipe(
+              Effect.mapError((error) => new TunnelNotConfigured({ message: String(error) })),
+            );
+            const exitCode = yield* handle.exitCode.pipe(
+              Effect.mapError((error) => new TunnelNotConfigured({ message: String(error) })),
+            );
+            const output = `${stdout}${stderr}`;
+            if (exitCode !== ChildProcessSpawner.ExitCode(0)) {
+              return yield* new ProcessFailed({
+                command: cloudflared,
+                args: [...args],
+                exitCode: Number(exitCode),
+                stderr,
+              });
+            }
+            return output;
+          }),
         );
-        const stderr = yield* decodeStream(handle.stderr).pipe(
-          Effect.mapError((error) => new TunnelNotConfigured({ message: String(error) })),
+      });
+
+      // `cloudflared tunnel login` prints the authorization URL and then blocks until the
+      // browser flow completes, so its output must reach the terminal live. Everything goes
+      // to stderr so --json stdout stays machine-readable.
+      const runInteractive = Effect.fn("Tunnel.runInteractive")(function* (
+        args: ReadonlyArray<string>,
+      ) {
+        const cloudflared = yield* binaries.resolve("cloudflared").pipe(Effect.orDie);
+        const pump = (stream: Stream.Stream<Uint8Array, PlatformError.PlatformError>) =>
+          Stream.runForEach(stream, (chunk) =>
+            Effect.sync(() => {
+              process.stderr.write(chunk);
+            }),
+          );
+        yield* Effect.scoped(
+          Effect.gen(function* () {
+            const handle = yield* spawner.spawn(ChildProcess.make(cloudflared, [...args]));
+            yield* Effect.all([pump(handle.stdout), pump(handle.stderr)], {
+              concurrency: 2,
+            }).pipe(
+              Effect.mapError((error) => new TunnelNotConfigured({ message: String(error) })),
+            );
+            const exitCode = yield* handle.exitCode.pipe(
+              Effect.mapError((error) => new TunnelNotConfigured({ message: String(error) })),
+            );
+            if (exitCode !== ChildProcessSpawner.ExitCode(0)) {
+              return yield* new ProcessFailed({
+                command: cloudflared,
+                args: [...args],
+                exitCode: Number(exitCode),
+                stderr: "",
+              });
+            }
+          }),
         );
-        const exitCode = yield* handle.exitCode.pipe(
-          Effect.mapError((error) => new TunnelNotConfigured({ message: String(error) })),
-        );
-        const output = `${stdout}${stderr}`;
-        if (exitCode !== ChildProcessSpawner.ExitCode(0)) {
-          return yield* new ProcessFailed({
-            command: cloudflared,
-            args: [...args],
-            exitCode: Number(exitCode),
-            stderr,
-          });
-        }
-        return output;
       });
 
       const list = Effect.fn("Tunnel.list")(function* () {
@@ -179,7 +217,13 @@ export class Tunnel extends Context.Service<
 
       return {
         login: Effect.fn("Tunnel.login")(function* () {
-          return yield* run(["tunnel", "login"]);
+          const certFile = path.join(process.env.HOME ?? "", ".cloudflared", "cert.pem");
+          const certExists = yield* fs.exists(certFile).pipe(Effect.orElseSucceed(() => false));
+          if (certExists) {
+            return `Cloudflare certificate already present at ${certFile}; skipping login`;
+          }
+          yield* runInteractive(["tunnel", "login"]);
+          return "Cloudflare login completed";
         }),
         create: Effect.fn("Tunnel.create")(function* (name: string) {
           const parsed = parseTunnelCreateOutput(yield* run(["tunnel", "create", name]));

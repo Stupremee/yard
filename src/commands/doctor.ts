@@ -54,18 +54,20 @@ const check = <R>(
   );
 
 const runCommand = (command: string, args: ReadonlyArray<string>) =>
-  Effect.gen(function* () {
-    const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-    const handle = yield* spawner.spawn(ChildProcess.make(command, [...args])).pipe(Effect.scoped);
-    yield* Stream.runDrain(handle.stdout);
-    yield* Stream.runDrain(handle.stderr);
-    const exitCode = yield* handle.exitCode;
-    if (Number(exitCode) !== 0) {
-      return yield* new DoctorProbeFailed({
-        message: `${command} ${args.join(" ")} exited ${Number(exitCode)}`,
-      });
-    }
-  });
+  Effect.scoped(
+    Effect.gen(function* () {
+      const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+      const handle = yield* spawner.spawn(ChildProcess.make(command, [...args]));
+      yield* Stream.runDrain(handle.stdout);
+      yield* Stream.runDrain(handle.stderr);
+      const exitCode = yield* handle.exitCode;
+      if (Number(exitCode) !== 0) {
+        return yield* new DoctorProbeFailed({
+          message: `${command} ${args.join(" ")} exited ${Number(exitCode)}`,
+        });
+      }
+    }),
+  );
 
 const streamText = (stream: Stream.Stream<Uint8Array, object>) =>
   Effect.gen(function* () {
@@ -80,20 +82,22 @@ const streamText = (stream: Stream.Stream<Uint8Array, object>) =>
     return new TextDecoder().decode(bytes);
   });
 
-const runCommandOutput = (command: string, args: ReadonlyArray<string>) =>
-  Effect.gen(function* () {
-    const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-    const handle = yield* spawner.spawn(ChildProcess.make(command, [...args])).pipe(Effect.scoped);
-    const stdout = yield* streamText(handle.stdout);
-    const stderr = yield* streamText(handle.stderr);
-    const exitCode = yield* handle.exitCode;
-    if (Number(exitCode) !== 0) {
-      return yield* new DoctorProbeFailed({
-        message: `${command} ${args.join(" ")} exited ${Number(exitCode)}: ${stderr}`,
-      });
-    }
-    return stdout;
-  });
+export const runCommandOutput = (command: string, args: ReadonlyArray<string>) =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+      const handle = yield* spawner.spawn(ChildProcess.make(command, [...args]));
+      const stdout = yield* streamText(handle.stdout);
+      const stderr = yield* streamText(handle.stderr);
+      const exitCode = yield* handle.exitCode;
+      if (Number(exitCode) !== 0) {
+        return yield* new DoctorProbeFailed({
+          message: `${command} ${args.join(" ")} exited ${Number(exitCode)}: ${stderr}`,
+        });
+      }
+      return stdout;
+    }),
+  );
 
 const portRangeSane = (range: readonly [number, number]) =>
   range[0] > 0 && range[1] <= 65535 && range[0] <= range[1];

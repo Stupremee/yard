@@ -7,7 +7,7 @@ import { Output } from "../services/Output.js";
 import { StateStore } from "../services/StateStore.js";
 import { Systemd } from "../services/Systemd.js";
 import { resolveContext } from "./context.js";
-import { instanceUnits, lifecycleSummary, summaryLines } from "./up.js";
+import { deriveCaddyInstances, instanceUnits, lifecycleSummary, summaryLines } from "./up.js";
 
 const runRm = Effect.fn("commands.rm.run")(function* () {
   const context = yield* resolveContext();
@@ -33,7 +33,7 @@ const runRm = Effect.fn("commands.rm.run")(function* () {
       yield* systemd.removeAppDropins(context.slug, instance.processes);
       yield* systemd.daemonReload();
       const { [context.slug]: _removed, ...remaining } = state.instances;
-      yield* caddy.syncConfig(globalConfig, remaining);
+      yield* caddy.syncConfig(globalConfig, yield* deriveCaddyInstances(remaining));
       yield* store.saveInstances({ ...state, instances: remaining });
       return lifecycleSummary({ command: "rm", slug: context.slug, globalConfig, instance });
     }),

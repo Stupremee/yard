@@ -96,10 +96,12 @@ export const initCommand = Command.make(
       );
 
       const resolved = yield* binaries.resolveAll();
+      // Login output (the authorization URL) streams live to stderr while cloudflared
+      // waits for the browser flow; the returned value is just a status line.
       const loginOutput = yield* tunnel.login();
       yield* output.emit({
         json: { step: "cloudflare-login", output: loginOutput },
-        human: loginOutput.trim().length === 0 ? "Cloudflare login completed" : loginOutput.trim(),
+        human: loginOutput,
       });
 
       const created = yield* tunnel.create(tunnelName);

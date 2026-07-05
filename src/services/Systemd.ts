@@ -67,8 +67,10 @@ Restart=on-failure
 
 export const renderAppDropin = (input: AppDropinInput): string => {
   const environment = Object.entries(input.environment).sort(([a], [b]) => a.localeCompare(b));
+  // systemd does not unquote WorkingDirectory= (unlike Environment=/ExecStart=);
+  // a quoted value is rejected as a non-absolute path, so emit it verbatim.
   return `[Service]
-WorkingDirectory=${systemdQuote(input.workingDirectory)}
+WorkingDirectory=${input.workingDirectory}
 ${environment.map(envLine).join("\n")}
 ExecStart=
 ExecStart=/bin/sh -lc ${shellSingleQuote(input.command)}
@@ -88,9 +90,7 @@ const renderDaemonUnit = (description: string, input: DaemonUnitInput): string =
   );
   const lines = [
     unitPreamble(description).trimEnd(),
-    input.workingDirectory === undefined
-      ? undefined
-      : `WorkingDirectory=${systemdQuote(input.workingDirectory)}`,
+    input.workingDirectory === undefined ? undefined : `WorkingDirectory=${input.workingDirectory}`,
     ...environment.map(envLine),
     `ExecStart=${[input.executable, ...args].map(systemdQuote).join(" ")}`,
     "Restart=on-failure",
@@ -123,9 +123,10 @@ export class Systemd extends Context.Service<
   Systemd,
   {
     readonly writeAppTemplate: () => Effect.Effect<void, PlatformError.PlatformError>;
+    /** Writes the per-instance dropin; returns true when the on-disk content changed. */
     readonly writeAppDropin: (
       input: AppDropinInput,
-    ) => Effect.Effect<void, PlatformError.PlatformError>;
+    ) => Effect.Effect<boolean, PlatformError.PlatformError>;
     readonly writeCaddyUnit: (
       input: DaemonUnitInput,
     ) => Effect.Effect<void, PlatformError.PlatformError>;
@@ -185,23 +186,23 @@ export class Systemd extends Context.Service<
         command: string,
         args: ReadonlyArray<string>,
       ) {
-        return yield* Effect.gen(function* () {
-          const handle = yield* spawner
-            .spawn(ChildProcess.make(command, [...args]))
-            .pipe(Effect.scoped);
-          const stdout = yield* decodeStream(handle.stdout);
-          const stderr = yield* decodeStream(handle.stderr);
-          const exitCode = yield* handle.exitCode;
-          if (exitCode !== ChildProcessSpawner.ExitCode(0)) {
-            return yield* new ProcessFailed({
-              command,
-              args: [...args],
-              exitCode: Number(exitCode),
-              stderr,
-            });
-          }
-          return { stdout, stderr, exitCode: Number(exitCode) };
-        }).pipe(
+        return yield* Effect.scoped(
+          Effect.gen(function* () {
+            const handle = yield* spawner.spawn(ChildProcess.make(command, [...args]));
+            const stdout = yield* decodeStream(handle.stdout);
+            const stderr = yield* decodeStream(handle.stderr);
+            const exitCode = yield* handle.exitCode;
+            if (exitCode !== ChildProcessSpawner.ExitCode(0)) {
+              return yield* new ProcessFailed({
+                command,
+                args: [...args],
+                exitCode: Number(exitCode),
+                stderr,
+              });
+            }
+            return { stdout, stderr, exitCode: Number(exitCode) };
+          }),
+        ).pipe(
           Effect.catch((error: PlatformError.PlatformError | ProcessFailed) =>
             "_tag" in error && error._tag === "ProcessFailed"
               ? Effect.fail(error)
@@ -222,22 +223,22 @@ export class Systemd extends Context.Service<
         args: ReadonlyArray<string>,
         onChunk: (chunk: Uint8Array) => Effect.Effect<void>,
       ) {
-        return yield* Effect.gen(function* () {
-          const handle = yield* spawner
-            .spawn(ChildProcess.make(command, [...args]))
-            .pipe(Effect.scoped);
-          yield* Stream.runForEach(handle.stdout, onChunk);
-          const stderr = yield* decodeStream(handle.stderr);
-          const exitCode = yield* handle.exitCode;
-          if (exitCode !== ChildProcessSpawner.ExitCode(0)) {
-            return yield* new ProcessFailed({
-              command,
-              args: [...args],
-              exitCode: Number(exitCode),
-              stderr,
-            });
-          }
-        }).pipe(
+        return yield* Effect.scoped(
+          Effect.gen(function* () {
+            const handle = yield* spawner.spawn(ChildProcess.make(command, [...args]));
+            yield* Stream.runForEach(handle.stdout, onChunk);
+            const stderr = yield* decodeStream(handle.stderr);
+            const exitCode = yield* handle.exitCode;
+            if (exitCode !== ChildProcessSpawner.ExitCode(0)) {
+              return yield* new ProcessFailed({
+                command,
+                args: [...args],
+                exitCode: Number(exitCode),
+                stderr,
+              });
+            }
+          }),
+        ).pipe(
           Effect.catch((error: PlatformError.PlatformError | ProcessFailed) =>
             "_tag" in error && error._tag === "ProcessFailed"
               ? Effect.fail(error)
@@ -259,12 +260,24 @@ export class Systemd extends Context.Service<
         writeAppTemplate: Effect.fn("Systemd.writeAppTemplate")(() =>
           writeUnit("yard-app@.service", renderAppTemplateUnit()),
         ),
-        writeAppDropin: Effect.fn("Systemd.writeAppDropin")((input: AppDropinInput) =>
-          writeUnit(
-            path.join(appDropinDirectoryName(input.slug, input.processName), "override.conf"),
-            renderAppDropin(input),
-          ),
-        ),
+        writeAppDropin: Effect.fn("Systemd.writeAppDropin")(function* (input: AppDropinInput) {
+          const dir = yield* userUnitDir();
+          const file = path.join(
+            dir,
+            appDropinDirectoryName(input.slug, input.processName),
+            "override.conf",
+          );
+          const rendered = renderAppDropin(input);
+          const existing = yield* fs
+            .readFileString(file)
+            .pipe(Effect.orElseSucceed(() => undefined));
+          if (existing === rendered) {
+            return false;
+          }
+          yield* fs.makeDirectory(path.dirname(file), { recursive: true });
+          yield* fs.writeFileString(file, rendered);
+          return true;
+        }),
         writeCaddyUnit: Effect.fn("Systemd.writeCaddyUnit")((input: DaemonUnitInput) =>
           writeUnit("yard-caddy.service", renderCaddyUnit(input)),
         ),

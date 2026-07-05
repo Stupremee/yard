@@ -8,7 +8,7 @@ import { ConfigInvalid } from "../domain/errors.js";
 import { GlobalConfig, Instance, InstancesFile, RepoConfig } from "../domain/model.js";
 import { appUnitName } from "../services/Systemd.js";
 import { primaryHostname, routeHostname } from "../domain/slug.js";
-import { Caddy } from "../services/Caddy.js";
+import { Caddy, type CaddyInstanceState } from "../services/Caddy.js";
 import { EnvLinker, type EnvLinkerAction } from "../services/EnvLinker.js";
 import { Lock } from "../services/Lock.js";
 import { Output } from "../services/Output.js";
@@ -119,8 +119,36 @@ export const summaryLines = (summary: LifecycleSummary): ReadonlyArray<string> =
     .map(([name, value]) => `${name}=${value}`)
     .join(" ")}`,
   `units: ${summary.units.join(" ")}`,
-  ...(summary.ready === undefined ? [] : [`ready: ${summary.ready ? "yes" : "not checked"}`]),
+  ...(summary.ready === undefined
+    ? []
+    : [summary.ready ? "ready: yes" : "ready: no (timed out after 60s)"]),
 ];
+
+/**
+ * Instance running-state is never persisted; every Caddy sync derives the other
+ * instances' state from systemd so a stopped instance keeps its 503 page when an
+ * unrelated command regenerates the config. The current command's instance is
+ * passed as an override because its state is known locally.
+ */
+export const deriveCaddyInstances = Effect.fn("commands.lifecycle.deriveCaddyInstances")(function* (
+  instances: Readonly<Record<string, Instance>>,
+  overrides: Readonly<Record<string, CaddyInstanceState>> = {},
+) {
+  const systemd = yield* Systemd;
+  const result: Record<string, CaddyInstanceState> = {};
+  for (const [slug, instance] of Object.entries(instances)) {
+    const override = overrides[slug];
+    if (override !== undefined) {
+      result[slug] = override;
+      continue;
+    }
+    const running = yield* systemd
+      .isActive(appUnitName(slug, instance.routedProcess))
+      .pipe(Effect.orElseSucceed(() => false));
+    result[slug] = { instance, running };
+  }
+  return result;
+});
 
 const failInvalid = (message: string) =>
   new ConfigInvalid({ path: "repo config", error: new Error(message) });
@@ -156,7 +184,7 @@ export const allocatePorts = Effect.fn("commands.lifecycle.allocatePorts")(funct
     if (requested !== undefined) {
       if (requested < from || requested > to || reserved.has(requested)) {
         return yield* new ConfigInvalid({
-          path: "repo config",
+          path: "--port",
           error: new Error(`Port ${requested} is not available in range ${from}-${to}`),
         });
       }
@@ -165,7 +193,7 @@ export const allocatePorts = Effect.fn("commands.lifecycle.allocatePorts")(funct
         return requested;
       }
       return yield* new ConfigInvalid({
-        path: "repo config",
+        path: "--port",
         error: new Error(`Port ${requested} is already in use`),
       });
     }
@@ -175,17 +203,13 @@ export const allocatePorts = Effect.fn("commands.lifecycle.allocatePorts")(funct
       return existing;
     }
 
-    for (let portNumber = from; portNumber <= to; portNumber += 1) {
-      if (reserved.has(portNumber)) continue;
-      if (yield* ports.isUsable(portNumber)) {
-        reserved.add(portNumber);
-        return portNumber;
-      }
-    }
-    return yield* new ConfigInvalid({
-      path: "repo config",
-      error: new Error(`No free ports in range ${from}-${to}`),
+    // Ports.allocate scans state + probes a real bind; exhaustion surfaces as NoFreePort.
+    const allocatedPort = yield* ports.allocate(slug, routeName, {
+      range: [from, to],
+      reserved,
     });
+    reserved.add(allocatedPort);
+    return allocatedPort;
   });
 
   allocated[plan.routedProcess] = yield* choosePort(plan.routedProcess, override);
@@ -262,8 +286,9 @@ export const startInstanceUnits = Effect.fn("commands.lifecycle.startInstanceUni
   const plan = buildPortPlan(config);
   const environment = buildProcessEnvironment(globalConfig, context.slug, instance.ports, plan);
   yield* systemd.writeAppTemplate();
+  const dropinChanged: Record<string, boolean> = {};
   for (const [processName, processSpec] of Object.entries(config.processes)) {
-    yield* systemd.writeAppDropin({
+    dropinChanged[processName] = yield* systemd.writeAppDropin({
       slug: context.slug,
       processName,
       command: processSpec.command,
@@ -272,8 +297,11 @@ export const startInstanceUnits = Effect.fn("commands.lifecycle.startInstanceUni
     });
   }
   yield* systemd.daemonReload();
-  for (const unit of instanceUnits(context.slug, instance.processes)) {
-    if (forceRestart) {
+  for (const processName of instance.processes) {
+    const unit = appUnitName(context.slug, processName);
+    // A changed dropin (new command/env) must restart an already-running unit;
+    // `systemctl start` is a no-op on active units. Restart also starts inactive ones.
+    if (forceRestart || dropinChanged[processName] === true) {
       yield* systemd.restart(unit);
     } else {
       yield* systemd.start(unit);
@@ -326,28 +354,34 @@ const runUp = Effect.fn("commands.up.run")(function* (options: {
         instance,
         Option.isSome(options.port),
       );
-      yield* caddy.syncConfig(globalConfig, {
-        ...nextState.instances,
-        [context.slug]: { instance, running: true },
-      });
+      yield* caddy.syncConfig(
+        globalConfig,
+        yield* deriveCaddyInstances(nextState.instances, {
+          [context.slug]: { instance, running: true },
+        }),
+      );
 
       const routedPort = instance.ports[instance.routedProcess];
       if (routedPort === undefined) {
         return yield* failInvalid(`Instance ${context.slug} has no routed port`);
       }
-      const ready = options.noWait ? undefined : yield* waitForHttpReady(routedPort);
-      return lifecycleSummary({
-        command: "up",
-        slug: context.slug,
-        globalConfig,
-        instance,
-        envActions,
-        ...(ready === undefined ? {} : { ready }),
-      });
+      return { globalConfig, instance, envActions, routedPort };
     }),
   );
 
-  yield* output.emit({ json: result, human: summaryLines(result) });
+  // The readiness poll can take up to 60s and mutates nothing, so it runs outside
+  // the mutation lock: parallel `yard up` in other worktrees must not queue on it.
+  const ready = options.noWait ? undefined : yield* waitForHttpReady(result.routedPort);
+  const summary = lifecycleSummary({
+    command: "up",
+    slug: context.slug,
+    globalConfig: result.globalConfig,
+    instance: result.instance,
+    envActions: result.envActions,
+    ...(ready === undefined ? {} : { ready }),
+  });
+
+  yield* output.emit({ json: summary, human: summaryLines(summary) });
 });
 
 export const upCommand = Command.make("up", { noWait, port }, runUp).pipe(

@@ -157,16 +157,20 @@ export class Binaries extends Context.Service<
             ),
           );
         const command = ChildProcess.make("tar", ["-xzf", archiveFile, "-C", workDir, "caddy"]);
-        const handle = yield* spawner.spawn(command).pipe(Effect.scoped);
-        const exitCode = yield* handle.exitCode;
-        if (exitCode !== ChildProcessSpawner.ExitCode(0)) {
-          return yield* new ProcessFailed({
-            command: "tar",
-            args: ["-xzf", archiveFile, "-C", workDir, "caddy"],
-            exitCode: Number(exitCode),
-            stderr: "failed to extract caddy archive",
-          });
-        }
+        yield* Effect.scoped(
+          Effect.gen(function* () {
+            const handle = yield* spawner.spawn(command);
+            const exitCode = yield* handle.exitCode;
+            if (exitCode !== ChildProcessSpawner.ExitCode(0)) {
+              return yield* new ProcessFailed({
+                command: "tar",
+                args: ["-xzf", archiveFile, "-C", workDir, "caddy"],
+                exitCode: Number(exitCode),
+                stderr: "failed to extract caddy archive",
+              });
+            }
+          }),
+        );
         const extracted = path.join(workDir, "caddy");
         yield* fs
           .chmod(extracted, 0o755)

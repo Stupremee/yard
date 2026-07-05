@@ -116,7 +116,11 @@ export class EnvLinker extends Context.Service<
         }
 
         const actions: Array<EnvLinkerAction> = [];
-        if (yield* exists(fs, destination)) {
+        if (currentTarget !== undefined) {
+          // Destination is a symlink with a wrong (possibly dangling) target:
+          // replace it. Backups only apply to regular files.
+          yield* fs.remove(destination, { force: true });
+        } else if (yield* exists(fs, destination)) {
           const backup = `${destination}.yard-backup`;
           yield* fs.rename(destination, backup);
           actions.push({ type: "backed-up", path: destination, backup });

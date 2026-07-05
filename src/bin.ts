@@ -106,6 +106,9 @@ const errorPayload = (error: unknown) => {
   return { error: "Error", message: String(error) };
 };
 
+const nestedMessage = (value: unknown): string =>
+  value instanceof Error ? value.message : String(value);
+
 const errorMessage = (error: unknown): string => {
   if (typeof error === "object" && error !== null && "_tag" in error) {
     const record = error as Record<string, unknown>;
@@ -113,13 +116,39 @@ const errorMessage = (error: unknown): string => {
       return `Unknown yard instance: ${String(record.slug)}`;
     }
     if (record._tag === "ConfigInvalid") {
-      const nested = record.error instanceof Error ? record.error.message : String(record.error);
-      return `Invalid config ${String(record.path)}: ${nested}`;
+      return `Invalid config ${String(record.path)}: ${nestedMessage(record.error)}`;
     }
     if (record._tag === "ProcessFailed") {
       return `${String(record.command)} failed with exit ${String(record.exitCode)}: ${String(record.stderr).trim()}`;
     }
-    return String(record._tag);
+    if (record._tag === "NotAGitRepo") {
+      const detail = record.message === undefined ? "" : ` (${String(record.message)})`;
+      return `Not a git repository: ${String(record.cwd)}${detail}`;
+    }
+    if (record._tag === "NoFreePort") {
+      return `No free ports available in range ${String(record.from)}-${String(record.to)}`;
+    }
+    if (record._tag === "StateLocked") {
+      const holder = record.pid === undefined ? "" : ` held by pid ${String(record.pid)}`;
+      return `Another yard command is running (lock ${String(record.path)}${holder}); try again shortly`;
+    }
+    if (record._tag === "CaddyUnreachable") {
+      return `Caddy admin API unreachable at ${String(record.url)}: ${nestedMessage(record.error)} (is yard-caddy.service running? try \`yard caddy start\`)`;
+    }
+    if (record._tag === "TunnelNotConfigured") {
+      return `Cloudflare tunnel not configured: ${String(record.message)} (run \`yard init --zone <zone>\`)`;
+    }
+    if (record._tag === "FilesystemError") {
+      return `Filesystem error during ${String(record.operation)} at ${String(record.path)}: ${nestedMessage(record.error)}`;
+    }
+    if (record._tag === "WordlistExhausted") {
+      return "No free worktree word left in the wordlist; remove unused instances with `yard rm`";
+    }
+    const fields = Object.entries(record)
+      .filter(([key]) => key !== "_tag")
+      .map(([key, value]) => `${key}=${nestedMessage(value)}`)
+      .join(", ");
+    return fields.length === 0 ? String(record._tag) : `${String(record._tag)}: ${fields}`;
   }
   return error instanceof Error ? error.message : String(error);
 };

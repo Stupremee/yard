@@ -37,7 +37,8 @@ describe("Systemd unit rendering", () => {
       },
     });
 
-    expect(output).toContain('WorkingDirectory="/srv/dev/repo worktree"');
+    expect(output).toContain("WorkingDirectory=/srv/dev/repo worktree");
+    expect(output).not.toContain('WorkingDirectory="/srv/dev/repo worktree"');
     expect(output).toContain('Environment="CONVEX_CLOUD_PORT=3210"');
     expect(output).toContain('Environment="DEV_HOST=repo.example.de"');
     expect(output).toContain('Environment="PORT=3100"');

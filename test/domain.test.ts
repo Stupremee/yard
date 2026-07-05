@@ -33,12 +33,19 @@ describe("wordlist", () => {
     expect(new Set(WORDS).size).toBe(WORDS.length);
   });
 
-  it.effect("retries collisions", () =>
+  it.effect("picks a random non-colliding word and reports exhaustion", () =>
     Effect.gen(function* () {
-      const first = WORDS[0]!;
-      const second = WORDS[1]!;
-      const picked = yield* pickWord((word) => word === first);
-      expect(picked).toBe(second);
+      const available = WORDS.at(-1)!;
+      const seen: Array<string> = [];
+      const picked = yield* pickWord((word) => {
+        seen.push(word);
+        return word !== available;
+      });
+      expect(picked).toBe(available);
+      expect(new Set(seen).size).toBe(seen.length);
+
+      const exhausted = yield* Effect.exit(pickWord(() => true));
+      expect(exhausted._tag).toBe("Failure");
     }),
   );
 });

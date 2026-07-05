@@ -48,7 +48,7 @@ type CaddyHandler =
       readonly handler: "static_response";
       readonly status_code: string;
       readonly headers?: {
-        readonly Content_Type: ReadonlyArray<string>;
+        readonly "Content-Type": ReadonlyArray<string>;
       };
       readonly body: string;
     };
@@ -89,7 +89,7 @@ const proxy = (port: number): CaddyHandler => ({
 const staticResponse = (statusCode: number, body: string): CaddyHandler => ({
   handler: "static_response",
   status_code: String(statusCode),
-  headers: { Content_Type: ["text/html; charset=utf-8"] },
+  headers: { "Content-Type": ["text/html; charset=utf-8"] },
   body,
 });
 

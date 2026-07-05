@@ -1,11 +1,13 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, it } from "@effect/vitest";
+import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
+import * as TestClock from "effect/testing/TestClock";
 import { GlobalConfig, Instance, InstancesFile } from "../src/domain/model.js";
-import { isPidAlive, Lock } from "../src/services/Lock.js";
+import { isPidAlive, Lock, lockRetryTimeoutMillis } from "../src/services/Lock.js";
 import { StateStore } from "../src/services/StateStore.js";
 import { Xdg } from "../src/services/Xdg.js";
 
@@ -98,21 +100,33 @@ describe("Lock", () => {
     expect(isPidAlive(process.pid)).toBe(true);
   });
 
-  it.effect("rejects a live held lock and clears stale locks", () =>
-    withTempXdg(
-      Effect.gen(function* () {
-        const fs = yield* FileSystem.FileSystem;
-        const xdg = yield* Xdg;
-        const paths = yield* xdg.paths();
-        yield* fs.makeDirectory(paths.stateDir, { recursive: true });
-        yield* fs.writeFileString(paths.lockFile, `${process.pid}\n`);
-        const lock = yield* Lock;
-        const live = yield* Effect.exit(lock.withMutationLock(Effect.succeed("nope")));
-        expect(live._tag).toBe("Failure");
-        yield* fs.writeFileString(paths.lockFile, "99999999\n");
-        expect(yield* lock.withMutationLock(Effect.succeed("ok"))).toBe("ok");
-        expect(yield* fs.exists(paths.lockFile)).toBe(false);
-      }).pipe(Effect.provide(lockLayer)),
-    ),
+  it.effect(
+    "waits on live held locks and clears stale locks",
+    () =>
+      withTempXdg(
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem;
+          const xdg = yield* Xdg;
+          const paths = yield* xdg.paths();
+          yield* fs.makeDirectory(paths.stateDir, { recursive: true });
+          yield* fs.writeFileString(paths.lockFile, `${process.pid}\n`);
+          const lock = yield* Lock;
+          const [live, elapsed] = yield* TestClock.withLive(
+            Effect.gen(function* () {
+              const started = yield* Clock.currentTimeMillis;
+              const exit = yield* Effect.exit(lock.withMutationLock(Effect.succeed("nope")));
+              const ended = yield* Clock.currentTimeMillis;
+              return [exit, ended - started] as const;
+            }),
+          );
+          expect(elapsed).toBeGreaterThanOrEqual(lockRetryTimeoutMillis);
+          expect(live._tag).toBe("Failure");
+
+          yield* fs.writeFileString(paths.lockFile, "99999999\n");
+          expect(yield* lock.withMutationLock(Effect.succeed("ok"))).toBe("ok");
+          expect(yield* fs.exists(paths.lockFile)).toBe(false);
+        }).pipe(Effect.provide(lockLayer)),
+      ),
+    10_000,
   );
 });

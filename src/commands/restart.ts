@@ -7,7 +7,13 @@ import { Output } from "../services/Output.js";
 import { StateStore } from "../services/StateStore.js";
 import { Systemd } from "../services/Systemd.js";
 import { resolveContext } from "./context.js";
-import { instanceUnits, lifecycleSummary, summaryLines, waitForHttpReady } from "./up.js";
+import {
+  deriveCaddyInstances,
+  instanceUnits,
+  lifecycleSummary,
+  summaryLines,
+  waitForHttpReady,
+} from "./up.js";
 
 const noWait = Flag.boolean("no-wait").pipe(Flag.withDescription("Do not wait for HTTP readiness"));
 
@@ -21,7 +27,7 @@ const runRestart = Effect.fn("commands.restart.run")(function* (options: {
   const caddy = yield* Caddy;
   const output = yield* Output;
 
-  const summary = yield* lock.withMutationLock(
+  const result = yield* lock.withMutationLock(
     Effect.gen(function* () {
       const globalConfig = yield* store.loadGlobalConfig();
       const state = yield* store.loadInstances();
@@ -32,10 +38,12 @@ const runRestart = Effect.fn("commands.restart.run")(function* (options: {
       for (const unit of instanceUnits(context.slug, instance.processes)) {
         yield* systemd.restart(unit);
       }
-      yield* caddy.syncConfig(globalConfig, {
-        ...state.instances,
-        [context.slug]: { instance, running: true },
-      });
+      yield* caddy.syncConfig(
+        globalConfig,
+        yield* deriveCaddyInstances(state.instances, {
+          [context.slug]: { instance, running: true },
+        }),
+      );
       const routedPort = instance.ports[instance.routedProcess];
       if (routedPort === undefined) {
         return yield* new ConfigInvalid({
@@ -43,16 +51,19 @@ const runRestart = Effect.fn("commands.restart.run")(function* (options: {
           error: new Error(`Instance ${context.slug} has no routed port`),
         });
       }
-      const ready = options.noWait ? undefined : yield* waitForHttpReady(routedPort);
-      return lifecycleSummary({
-        command: "restart",
-        slug: context.slug,
-        globalConfig,
-        instance,
-        ...(ready === undefined ? {} : { ready }),
-      });
+      return { globalConfig, instance, routedPort };
     }),
   );
+
+  // Readiness polling happens outside the mutation lock (see `up`).
+  const ready = options.noWait ? undefined : yield* waitForHttpReady(result.routedPort);
+  const summary = lifecycleSummary({
+    command: "restart",
+    slug: context.slug,
+    globalConfig: result.globalConfig,
+    instance: result.instance,
+    ...(ready === undefined ? {} : { ready }),
+  });
 
   yield* output.emit({ json: summary, human: summaryLines(summary) });
 });
