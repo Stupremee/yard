@@ -80,6 +80,10 @@ Every command accepts `--json` for machine-readable output.
 - [Architecture](docs/architecture.md) — request chain, units, state, locking.
 - [Troubleshooting](docs/troubleshooting.md) — `yard doctor`, failures, resets.
 
+For AI coding agents, an installable skill lives at
+[`skills/using-yard`](skills/using-yard/SKILL.md):
+`npx skills add Stupremee/yard --skill using-yard`.
+
 ## License
 
 MIT.
