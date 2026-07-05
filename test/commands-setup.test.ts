@@ -1,7 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
-import { buildInitConfig } from "../src/commands/init.js";
-import { doctorFailed, formatDoctorChecks, type DoctorCheck } from "../src/commands/doctor.js";
-import { viteConfigSnippet } from "../src/commands/printViteConfig.js";
+import { buildInitConfig } from "../src/commands/init.ts";
+import { doctorFailed, formatDoctorChecks, type DoctorCheck } from "../src/commands/doctor.ts";
+import { viteConfigSnippet } from "../src/commands/printViteConfig.ts";
 
 describe("print-vite-config", () => {
   it("prints the yard Vite server snippet", () => {

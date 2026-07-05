@@ -2,8 +2,8 @@ import { describe, expect, it } from "@effect/vitest";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import { parseWorktreePorcelain } from "../src/services/Git.js";
-import { Git } from "../src/services/Git.js";
+import { parseWorktreePorcelain } from "../src/services/Git.ts";
+import { Git } from "../src/services/Git.ts";
 
 const gitLayer = Git.layer.pipe(Layer.provide(NodeServices.layer));
 

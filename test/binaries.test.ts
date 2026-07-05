@@ -6,7 +6,7 @@ import {
   downloadFor,
   isAbsolutePath,
   pathCandidates,
-} from "../src/services/Binaries.js";
+} from "../src/services/Binaries.ts";
 
 describe("Binaries pure helpers", () => {
   it("honors explicit absolute paths separately from auto", () => {

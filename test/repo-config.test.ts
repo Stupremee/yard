@@ -3,7 +3,7 @@ import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
-import { RepoConfig } from "../src/services/RepoConfig.js";
+import { RepoConfig } from "../src/services/RepoConfig.ts";
 
 const withTempDir = <A, E, R>(effect: (dir: string) => Effect.Effect<A, E, R>) =>
   Effect.gen(function* () {

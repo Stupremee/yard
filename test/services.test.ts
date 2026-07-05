@@ -6,10 +6,10 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import * as TestClock from "effect/testing/TestClock";
-import { GlobalConfig, Instance, InstancesFile } from "../src/domain/model.js";
-import { isPidAlive, Lock, lockRetryTimeoutMillis } from "../src/services/Lock.js";
-import { StateStore } from "../src/services/StateStore.js";
-import { Xdg } from "../src/services/Xdg.js";
+import { GlobalConfig, Instance, InstancesFile } from "../src/domain/model.ts";
+import { isPidAlive, Lock, lockRetryTimeoutMillis } from "../src/services/Lock.ts";
+import { StateStore } from "../src/services/StateStore.ts";
+import { Xdg } from "../src/services/Xdg.ts";
 
 const withTempXdg = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
   Effect.gen(function* () {

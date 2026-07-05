@@ -11,9 +11,9 @@ import { HttpClient, HttpClientResponse } from "effect/unstable/http";
 import type * as HttpClientError from "effect/unstable/http/HttpClientError";
 import type * as HttpClientRequest from "effect/unstable/http/HttpClientRequest";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
-import { GlobalConfig, Instance } from "../src/domain/model.js";
-import { Caddy, encodeCaddyConfig, generateCaddyConfig } from "../src/services/Caddy.js";
-import { Xdg } from "../src/services/Xdg.js";
+import { GlobalConfig, Instance } from "../src/domain/model.ts";
+import { Caddy, encodeCaddyConfig, generateCaddyConfig } from "../src/services/Caddy.ts";
+import { Xdg } from "../src/services/Xdg.ts";
 
 const globalConfig = new GlobalConfig({
   version: 1,

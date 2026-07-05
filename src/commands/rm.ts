@@ -1,13 +1,13 @@
 import * as Effect from "effect/Effect";
 import { Command } from "effect/unstable/cli";
-import { InstanceNotFound } from "../domain/errors.js";
-import { Caddy } from "../services/Caddy.js";
-import { Lock } from "../services/Lock.js";
-import { Output } from "../services/Output.js";
-import { StateStore } from "../services/StateStore.js";
-import { Systemd } from "../services/Systemd.js";
-import { resolveContext } from "./context.js";
-import { deriveCaddyInstances, instanceUnits, lifecycleSummary, summaryLines } from "./up.js";
+import { InstanceNotFound } from "../domain/errors.ts";
+import { Caddy } from "../services/Caddy.ts";
+import { Lock } from "../services/Lock.ts";
+import { Output } from "../services/Output.ts";
+import { StateStore } from "../services/StateStore.ts";
+import { Systemd } from "../services/Systemd.ts";
+import { resolveContext } from "./context.ts";
+import { deriveCaddyInstances, instanceUnits, lifecycleSummary, summaryLines } from "./up.ts";
 
 const runRm = Effect.fn("commands.rm.run")(function* () {
   const context = yield* resolveContext();

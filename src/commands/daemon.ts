@@ -1,7 +1,7 @@
 import * as Effect from "effect/Effect";
 import { Command, Flag } from "effect/unstable/cli";
-import { Output } from "../services/Output.js";
-import { Systemd } from "../services/Systemd.js";
+import { Output } from "../services/Output.ts";
+import { Systemd } from "../services/Systemd.ts";
 
 type DaemonName = "caddy" | "tunnel";
 

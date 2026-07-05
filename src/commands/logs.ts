@@ -1,11 +1,11 @@
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import { Command, Flag } from "effect/unstable/cli";
-import { ConfigInvalid } from "../domain/errors.js";
-import { Output } from "../services/Output.js";
-import { appUnitName } from "../services/Systemd.js";
-import { Systemd } from "../services/Systemd.js";
-import { lookupInstance, resolveContext } from "./context.js";
+import { ConfigInvalid } from "../domain/errors.ts";
+import { Output } from "../services/Output.ts";
+import { appUnitName } from "../services/Systemd.ts";
+import { Systemd } from "../services/Systemd.ts";
+import { lookupInstance, resolveContext } from "./context.ts";
 
 export const selectLogProcess = (
   processes: ReadonlyArray<string>,

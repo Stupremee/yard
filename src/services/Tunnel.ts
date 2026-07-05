@@ -7,10 +7,10 @@ import * as Path from "effect/Path";
 import type * as PlatformError from "effect/PlatformError";
 import * as Stream from "effect/Stream";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
-import { FilesystemError, ProcessFailed, TunnelNotConfigured } from "../domain/errors.js";
-import { StateStore } from "./StateStore.js";
-import { Xdg } from "./Xdg.js";
-import { Binaries } from "./Binaries.js";
+import { FilesystemError, ProcessFailed, TunnelNotConfigured } from "../domain/errors.ts";
+import { StateStore } from "./StateStore.ts";
+import { Xdg } from "./Xdg.ts";
+import { Binaries } from "./Binaries.ts";
 
 export type TunnelCreateResult = {
   readonly id: string;

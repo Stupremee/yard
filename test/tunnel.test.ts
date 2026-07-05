@@ -5,7 +5,7 @@ import {
   parseTunnelCreateOutput,
   parseTunnelList,
   renderTunnelConfig,
-} from "../src/services/Tunnel.js";
+} from "../src/services/Tunnel.ts";
 
 const tunnelId = "12345678-1234-4234-9234-123456789abc";
 

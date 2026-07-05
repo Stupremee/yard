@@ -5,9 +5,9 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
-import { ConfigInvalid, FilesystemError } from "../domain/errors.js";
-import { emptyInstancesFile, GlobalConfig, InstancesFile } from "../domain/model.js";
-import { Xdg } from "./Xdg.js";
+import { ConfigInvalid, FilesystemError } from "../domain/errors.ts";
+import { emptyInstancesFile, GlobalConfig, InstancesFile } from "../domain/model.ts";
+import { Xdg } from "./Xdg.ts";
 
 const readInstances = (fs: FileSystem.FileSystem, file: string) =>
   Effect.gen(function* () {

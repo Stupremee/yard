@@ -4,7 +4,7 @@ import * as Layer from "effect/Layer";
 import type * as PlatformError from "effect/PlatformError";
 import * as Stream from "effect/Stream";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
-import { NotAGitRepo, ProcessFailed } from "../domain/errors.js";
+import { NotAGitRepo, ProcessFailed } from "../domain/errors.ts";
 
 export type WorktreeInfo = {
   readonly path: string;

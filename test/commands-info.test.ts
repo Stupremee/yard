@@ -1,8 +1,8 @@
 import { describe, expect, it } from "@effect/vitest";
-import { Instance } from "../src/domain/model.js";
-import { selectLogProcess } from "../src/commands/logs.js";
-import { shapeInstanceStatus } from "../src/commands/status.js";
-import { composeUrlInfo } from "../src/commands/url.js";
+import { Instance } from "../src/domain/model.ts";
+import { selectLogProcess } from "../src/commands/logs.ts";
+import { shapeInstanceStatus } from "../src/commands/status.ts";
+import { composeUrlInfo } from "../src/commands/url.ts";
 
 describe("command info helpers", () => {
   it("composes primary and route URLs with v1 authHeaders", () => {

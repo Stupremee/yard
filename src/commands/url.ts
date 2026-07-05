@@ -1,11 +1,11 @@
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import { Command, Flag } from "effect/unstable/cli";
-import { ConfigInvalid } from "../domain/errors.js";
-import { primaryHostname, routeHostname } from "../domain/slug.js";
-import { Output } from "../services/Output.js";
-import { StateStore } from "../services/StateStore.js";
-import { lookupInstance, resolveContext } from "./context.js";
+import { ConfigInvalid } from "../domain/errors.ts";
+import { primaryHostname, routeHostname } from "../domain/slug.ts";
+import { Output } from "../services/Output.ts";
+import { StateStore } from "../services/StateStore.ts";
+import { lookupInstance, resolveContext } from "./context.ts";
 
 export type UrlInfo = {
   readonly slug: string;

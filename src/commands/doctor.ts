@@ -6,13 +6,13 @@ import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 import { Command } from "effect/unstable/cli";
-import { Binaries } from "../services/Binaries.js";
-import { Caddy } from "../services/Caddy.js";
-import { Output } from "../services/Output.js";
-import { StateStore } from "../services/StateStore.js";
-import { Systemd } from "../services/Systemd.js";
-import { Tunnel } from "../services/Tunnel.js";
-import { expandHome } from "../services/Tunnel.js";
+import { Binaries } from "../services/Binaries.ts";
+import { Caddy } from "../services/Caddy.ts";
+import { Output } from "../services/Output.ts";
+import { StateStore } from "../services/StateStore.ts";
+import { Systemd } from "../services/Systemd.ts";
+import { Tunnel } from "../services/Tunnel.ts";
+import { expandHome } from "../services/Tunnel.ts";
 
 export type DoctorCheck = {
   readonly name: string;

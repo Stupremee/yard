@@ -6,9 +6,9 @@ import {
   composeInstanceSlug,
   routeHostname,
   slugifyRepoName,
-} from "../src/domain/slug.js";
-import { pickWord, WORDS } from "../src/domain/wordlist.js";
-import { GlobalConfig, Instance, InstancesFile, RepoConfig } from "../src/domain/model.js";
+} from "../src/domain/slug.ts";
+import { pickWord, WORDS } from "../src/domain/wordlist.ts";
+import { GlobalConfig, Instance, InstancesFile, RepoConfig } from "../src/domain/model.ts";
 
 describe("slug", () => {
   it("slugifies repo names and composes hosts", () => {

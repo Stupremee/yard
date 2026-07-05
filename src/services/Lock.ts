@@ -4,8 +4,8 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import type * as PlatformError from "effect/PlatformError";
-import { StateLocked } from "../domain/errors.js";
-import { Xdg } from "./Xdg.js";
+import { StateLocked } from "../domain/errors.ts";
+import { Xdg } from "./Xdg.ts";
 
 export const isPidAlive = (pid: number): boolean => {
   try {

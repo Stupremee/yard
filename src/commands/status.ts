@@ -1,13 +1,13 @@
 import * as Effect from "effect/Effect";
 import { Command } from "effect/unstable/cli";
-import { Instance } from "../domain/model.js";
-import { primaryHostname, routeHostname } from "../domain/slug.js";
-import { appUnitName } from "../services/Systemd.js";
-import { Caddy } from "../services/Caddy.js";
-import { Output } from "../services/Output.js";
-import { StateStore } from "../services/StateStore.js";
-import { Systemd } from "../services/Systemd.js";
-import { lookupInstance, resolveContext } from "./context.js";
+import { Instance } from "../domain/model.ts";
+import { primaryHostname, routeHostname } from "../domain/slug.ts";
+import { appUnitName } from "../services/Systemd.ts";
+import { Caddy } from "../services/Caddy.ts";
+import { Output } from "../services/Output.ts";
+import { StateStore } from "../services/StateStore.ts";
+import { Systemd } from "../services/Systemd.ts";
+import { lookupInstance, resolveContext } from "./context.ts";
 
 export type ProcessStatus = {
   readonly name: string;

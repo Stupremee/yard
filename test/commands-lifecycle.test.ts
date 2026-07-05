@@ -3,17 +3,17 @@ import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
-import { GlobalConfig, Instance, ProcessSpec, RepoConfig, RouteSpec } from "../src/domain/model.js";
+import { GlobalConfig, Instance, ProcessSpec, RepoConfig, RouteSpec } from "../src/domain/model.ts";
 import {
   allocatePorts,
   buildPortPlan,
   buildProcessEnvironment,
   lifecycleSummary,
   summaryLines,
-} from "../src/commands/up.js";
-import { Ports } from "../src/services/Ports.js";
-import { StateStore } from "../src/services/StateStore.js";
-import { Xdg } from "../src/services/Xdg.js";
+} from "../src/commands/up.ts";
+import { Ports } from "../src/services/Ports.ts";
+import { StateStore } from "../src/services/StateStore.ts";
+import { Xdg } from "../src/services/Xdg.ts";
 
 const globalConfig = new GlobalConfig({
   version: 1,

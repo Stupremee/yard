@@ -7,7 +7,7 @@ import {
   renderAppTemplateUnit,
   renderCaddyUnit,
   renderTunnelUnit,
-} from "../src/services/Systemd.js";
+} from "../src/services/Systemd.ts";
 
 describe("Systemd unit rendering", () => {
   it("renders the app template without install section", () => {

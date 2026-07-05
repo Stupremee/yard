@@ -1,6 +1,6 @@
 import * as Effect from "effect/Effect";
 import { Command } from "effect/unstable/cli";
-import { Output } from "../services/Output.js";
+import { Output } from "../services/Output.ts";
 
 export const viteConfigSnippet = `// yard expects PORT and DEV_HOST to be set in the process environment.
 // If either is missing, fail fast before exporting the config.

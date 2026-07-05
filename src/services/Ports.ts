@@ -2,8 +2,8 @@ import { createServer } from "node:net";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import { NoFreePort } from "../domain/errors.js";
-import { StateStore } from "./StateStore.js";
+import { NoFreePort } from "../domain/errors.ts";
+import { StateStore } from "./StateStore.ts";
 
 type AllocateOptions = {
   readonly override?: number;

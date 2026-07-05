@@ -6,9 +6,9 @@ import * as Path from "effect/Path";
 import type * as PlatformError from "effect/PlatformError";
 import * as Stream from "effect/Stream";
 import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
-import { ProcessFailed } from "../domain/errors.js";
-import { appUnitInstanceName } from "../domain/slug.js";
-import { Xdg } from "./Xdg.js";
+import { ProcessFailed } from "../domain/errors.ts";
+import { appUnitInstanceName } from "../domain/slug.ts";
+import { Xdg } from "./Xdg.ts";
 
 export type AppDropinInput = {
   readonly slug: string;

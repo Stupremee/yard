@@ -4,8 +4,8 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
-import { ConfigInvalid, FilesystemError } from "../domain/errors.js";
-import { ProcessSpec, RepoConfig as RepoConfigModel } from "../domain/model.js";
+import { ConfigInvalid, FilesystemError } from "../domain/errors.ts";
+import { ProcessSpec, RepoConfig as RepoConfigModel } from "../domain/model.ts";
 
 type PackageJson = {
   readonly packageManager?: unknown;

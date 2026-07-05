@@ -1,10 +1,10 @@
 import * as Effect from "effect/Effect";
 import { Command } from "effect/unstable/cli";
-import { EnvLinker } from "../services/EnvLinker.js";
-import type { EnvLinkerAction } from "../services/EnvLinker.js";
-import { Output } from "../services/Output.js";
-import { RepoConfig } from "../services/RepoConfig.js";
-import { lookupInstance, resolveContext } from "./context.js";
+import { EnvLinker } from "../services/EnvLinker.ts";
+import type { EnvLinkerAction } from "../services/EnvLinker.ts";
+import { Output } from "../services/Output.ts";
+import { RepoConfig } from "../services/RepoConfig.ts";
+import { lookupInstance, resolveContext } from "./context.ts";
 
 const formatAction = (action: EnvLinkerAction): string => {
   switch (action.type) {

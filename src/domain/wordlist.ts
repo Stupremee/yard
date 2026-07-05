@@ -1,6 +1,6 @@
 import * as Effect from "effect/Effect";
 import * as Random from "effect/Random";
-import { WordlistExhausted } from "./errors.js";
+import { WordlistExhausted } from "./errors.ts";
 
 /**
  * Curated list of short (3-8 character), memorable English words used to name

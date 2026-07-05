@@ -1,10 +1,10 @@
 import * as Effect from "effect/Effect";
-import { InstanceNotFound, NoInstanceForWorktree, NotAGitRepo } from "../domain/errors.js";
-import { Instance } from "../domain/model.js";
-import { composeInstanceSlug, slugifyRepoName } from "../domain/slug.js";
-import { pickWord } from "../domain/wordlist.js";
-import { Git } from "../services/Git.js";
-import { StateStore } from "../services/StateStore.js";
+import { InstanceNotFound, NoInstanceForWorktree, NotAGitRepo } from "../domain/errors.ts";
+import { Instance } from "../domain/model.ts";
+import { composeInstanceSlug, slugifyRepoName } from "../domain/slug.ts";
+import { pickWord } from "../domain/wordlist.ts";
+import { Git } from "../services/Git.ts";
+import { StateStore } from "../services/StateStore.ts";
 
 export interface InstanceContext {
   readonly slug: string;

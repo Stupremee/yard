@@ -1,8 +1,8 @@
 import * as Effect from "effect/Effect";
 import { Command } from "effect/unstable/cli";
-import { Output } from "../services/Output.js";
-import { StateStore } from "../services/StateStore.js";
-import { formatInstanceStatus, loadInstanceStatus } from "./status.js";
+import { Output } from "../services/Output.ts";
+import { StateStore } from "../services/StateStore.ts";
+import { formatInstanceStatus, loadInstanceStatus } from "./status.ts";
 
 export const listCommand = Command.make(
   "list",

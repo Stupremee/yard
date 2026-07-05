@@ -4,10 +4,10 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import { createServer, type Server } from "node:net";
-import { GlobalConfig, Instance, InstancesFile } from "../src/domain/model.js";
-import { Ports } from "../src/services/Ports.js";
-import { StateStore } from "../src/services/StateStore.js";
-import { Xdg } from "../src/services/Xdg.js";
+import { GlobalConfig, Instance, InstancesFile } from "../src/domain/model.ts";
+import { Ports } from "../src/services/Ports.ts";
+import { StateStore } from "../src/services/StateStore.ts";
+import { Xdg } from "../src/services/Xdg.ts";
 
 const withTempXdg = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
   Effect.gen(function* () {

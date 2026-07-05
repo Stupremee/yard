@@ -12,9 +12,9 @@ import {
   FilesystemError,
   ProcessFailed,
   TunnelNotConfigured,
-} from "../domain/errors.js";
-import { StateStore } from "./StateStore.js";
-import { Xdg } from "./Xdg.js";
+} from "../domain/errors.ts";
+import { StateStore } from "./StateStore.ts";
+import { Xdg } from "./Xdg.ts";
 
 export type BinaryName = "caddy" | "cloudflared";
 export type SupportedArch = "x64" | "arm64";
