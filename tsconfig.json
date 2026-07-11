@@ -19,6 +19,7 @@
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
     "resolveJsonModule": true,
+    "types": ["node"],
     "plugins": [
       {
         "name": "@effect/language-service",
