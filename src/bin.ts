@@ -10,19 +10,18 @@ import { runDev, statusDev, stopDev } from "./dev/runner.ts";
 const name = Flag.string("name").pipe(Flag.withAlias("n"), Flag.optional);
 const stop = Command.make("stop", { name }, ({ name }) =>
   stopDev(process.cwd(), Option.getOrUndefined(name)),
+).pipe(Command.withDescription("Stop the running development stack"));
+const status = Command.make("status", {}, () => statusDev()).pipe(
+  Command.withDescription("List running development stacks"),
 );
-const status = Command.make("status", {}, () => statusDev());
 const dev = Command.make("dev", { name }, ({ name }) =>
   Effect.scoped(runDev(process.cwd(), Option.getOrUndefined(name))),
-).pipe(
-  Command.withDescription("Run a singleton development stack"),
-  Command.withSubcommands([stop, status]),
-);
+).pipe(Command.withDescription("Run a singleton development stack"));
 const yard = Command.make("yard", {}, () =>
   Console.log("Use yard --help to see available commands."),
 ).pipe(
   Command.withDescription("Manage AI-assisted development environments"),
-  Command.withSubcommands([dev]),
+  Command.withSubcommands([dev, stop, status]),
 );
 
 Command.run(yard, { version: pkg.version }).pipe(

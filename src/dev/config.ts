@@ -20,6 +20,8 @@ export type YardConfig = typeof YardConfig.Type;
 const PackageJson = Schema.Struct({
   name: Schema.optionalKey(Schema.String),
   scripts: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+  dependencies: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+  devDependencies: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
   yard: Schema.optionalKey(Schema.Unknown),
 });
 type PackageJson = typeof PackageJson.Type;
@@ -56,7 +58,7 @@ const yardConfig = Effect.fn("dev.yardConfig")(function* (cwd: string, pkg: Pack
 export const commandLabel = (command: string): string => {
   const words = command.trim().split(/\s+/);
   if (words.length >= 3 && words[1] === "run") return words[2] ?? words[0] ?? "dev";
-  if (words.length >= 2 && ["npm", "pnpm", "yarn", "bun"].includes(words[0] ?? ""))
+  if (words.length >= 2 && ["npm", "pnpm", "yarn", "bun", "vp"].includes(words[0] ?? ""))
     return words[1] ?? "dev";
   return words[0] || "dev";
 };
@@ -64,6 +66,13 @@ export const commandLabel = (command: string): string => {
 export const detectPackageManager = Effect.fn("dev.detectPackageManager")(function* (cwd: string) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
+  const pkg = yield* packageJson(cwd);
+  // Vite+ projects keep the underlying package manager's lockfile, so vp must win over lockfile detection.
+  if (
+    pkg.dependencies?.["vite-plus"] !== undefined ||
+    pkg.devDependencies?.["vite-plus"] !== undefined
+  )
+    return "vp";
   if (yield* fs.exists(path.join(cwd, "pnpm-lock.yaml"))) return "pnpm";
   if (yield* fs.exists(path.join(cwd, "bun.lock"))) return "bun";
   if (yield* fs.exists(path.join(cwd, "bun.lockb"))) return "bun";
