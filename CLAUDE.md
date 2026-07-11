@@ -27,6 +27,16 @@ Build-time Effect diagnostics come from `@effect/tsgo` (patched tsgo binary, app
 
 <!-- effect-solutions:start -->
 
+## Validation
+
+NEVER manually validate external or untrusted data (JSON files, configs, CLI
+input, process output) with hand-written `typeof`/`in` checks, type guards, or
+`as` casts. Always define an Effect `Schema` (`Schema.Struct`, `Schema.Union`,
+`Schema.Record`, ...) as the single source of truth and derive both the type
+(`typeof S.Type`) and the runtime validation (`Schema.decodeEffect`,
+`Schema.decodeUnknownEffect`, `Schema.fromJsonString`, `Schema.is`) from it.
+See `src/dev/config.ts` (`PackageJson`, `YardConfig`) for the pattern.
+
 ## Effect Best Practices
 
 **IMPORTANT:** Always consult effect-solutions before writing Effect code.

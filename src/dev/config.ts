@@ -5,31 +5,53 @@ import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 
 export type DevTask = { readonly label: string; readonly command: string };
-export type DevDefinition = string | Readonly<Record<string, string>>;
-type PackageJson = { readonly name?: unknown; readonly scripts?: unknown; readonly yard?: unknown };
+export const DevDefinition = Schema.Union([
+  Schema.String,
+  Schema.Record(Schema.String, Schema.String),
+]);
+export type DevDefinition = typeof DevDefinition.Type;
+
+export const YardConfig = Schema.Struct({
+  name: Schema.optionalKey(Schema.String),
+  dev: Schema.optionalKey(DevDefinition),
+});
+export type YardConfig = typeof YardConfig.Type;
+
+const PackageJson = Schema.Struct({
+  name: Schema.optionalKey(Schema.String),
+  scripts: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+  yard: Schema.optionalKey(Schema.Unknown),
+});
+type PackageJson = typeof PackageJson.Type;
 
 export class NoDevTasksError extends Data.TaggedError("NoDevTasksError")<{
   readonly message: string;
 }> {}
 
-const readJson = Effect.fn("dev.readJson")(function* (file: string) {
+const readJsonFile = Effect.fn("dev.readJsonFile")(function* <S extends Schema.Top>(
+  file: string,
+  schema: S,
+) {
   const fs = yield* FileSystem.FileSystem;
-  return yield* Schema.decodeEffect(Schema.UnknownFromJsonString)(yield* fs.readFileString(file));
+  return yield* Schema.decodeEffect(Schema.fromJsonString(schema))(yield* fs.readFileString(file));
 });
 
 const packageJson = Effect.fn("dev.packageJson")(function* (cwd: string) {
   const path = yield* Path.Path;
-  return yield* readJson(path.join(cwd, "package.json")).pipe(
-    Effect.map((value): PackageJson => (typeof value === "object" && value !== null ? value : {})),
+  return yield* readJsonFile(path.join(cwd, "package.json"), PackageJson).pipe(
     Effect.orElseSucceed((): PackageJson => ({})),
   );
 });
 
-const isDevDefinition = (value: unknown): value is DevDefinition =>
-  typeof value === "string" ||
-  (typeof value === "object" &&
-    value !== null &&
-    Object.values(value).every((command) => typeof command === "string"));
+const yardConfig = Effect.fn("dev.yardConfig")(function* (cwd: string, pkg: PackageJson) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const file = path.join(cwd, "yard.json");
+  if (yield* fs.exists(file)) return yield* readJsonFile(file, YardConfig);
+  return yield* Schema.decodeUnknownEffect(YardConfig)(pkg.yard).pipe(
+    Effect.orElseSucceed((): YardConfig => ({})),
+  );
+});
 
 export const commandLabel = (command: string): string => {
   const words = command.trim().split(/\s+/);
@@ -54,44 +76,22 @@ export const resolveStackName = Effect.fn("dev.resolveStackName")(function* (
   override?: string,
 ) {
   if (override) return override;
-  const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const pkg = yield* packageJson(cwd);
-  const yardPath = path.join(cwd, "yard.json");
-  const config = yield* fs.exists(yardPath)
-    ? readJson(yardPath).pipe(Effect.orElseSucceed(() => pkg.yard))
-    : Effect.succeed(pkg.yard);
-  if (
-    typeof config === "object" &&
-    config !== null &&
-    "name" in config &&
-    typeof config.name === "string"
-  )
-    return config.name;
-  return typeof pkg.name === "string" && pkg.name.length > 0 ? pkg.name : path.basename(cwd);
+  const config = yield* yardConfig(cwd, pkg).pipe(Effect.orElseSucceed((): YardConfig => ({})));
+  return config.name ?? (pkg.name ? pkg.name : path.basename(cwd));
 });
 
 export const resolveDevTasks = Effect.fn("dev.resolveDevTasks")(function* (cwd: string) {
-  const fs = yield* FileSystem.FileSystem;
-  const path = yield* Path.Path;
   const pkg = yield* packageJson(cwd);
-  const configPath = path.join(cwd, "yard.json");
-  const config = (yield* fs.exists(configPath)) ? yield* readJson(configPath) : pkg.yard;
-  if (
-    typeof config === "object" &&
-    config !== null &&
-    "dev" in config &&
-    isDevDefinition(config.dev)
-  )
-    return typeof config.dev === "string"
-      ? [{ label: commandLabel(config.dev), command: config.dev }]
-      : Object.entries(config.dev).map(([label, command]) => ({ label, command }));
-  if (
-    typeof pkg.scripts === "object" &&
-    pkg.scripts !== null &&
-    "dev" in pkg.scripts &&
-    typeof pkg.scripts.dev === "string"
-  )
+  const config = yield* yardConfig(cwd, pkg);
+  if (config.dev !== undefined) {
+    const dev = config.dev;
+    return typeof dev === "string"
+      ? [{ label: commandLabel(dev), command: dev }]
+      : Object.entries(dev).map(([label, command]) => ({ label, command }));
+  }
+  if (pkg.scripts?.dev !== undefined)
     return [{ label: "dev", command: `${yield* detectPackageManager(cwd)} run dev` }];
   return yield* new NoDevTasksError({
     message:

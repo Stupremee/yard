@@ -11,13 +11,20 @@ import * as Stream from "effect/Stream";
 import { ChildProcess } from "effect/unstable/process";
 import { resolveDevTasks, resolveStackName } from "./config.ts";
 
-type ChildState = { readonly pid: number; readonly label: string; readonly command: string };
-type DevState = {
-  readonly cwd: string;
-  readonly pid: number;
-  readonly startedAt: string;
-  readonly children: ReadonlyArray<ChildState>;
-};
+const ChildState = Schema.Struct({
+  pid: Schema.Int,
+  label: Schema.String,
+  command: Schema.String,
+});
+type ChildState = typeof ChildState.Type;
+const DevState = Schema.Struct({
+  cwd: Schema.String,
+  pid: Schema.Int,
+  startedAt: Schema.String,
+  children: Schema.Array(ChildState),
+});
+type DevState = typeof DevState.Type;
+const DevStateJson = Schema.fromJsonString(DevState);
 class DevTaskExitError extends Data.TaggedError("DevTaskExitError")<{ readonly code: number }> {}
 
 const tempRoot = Effect.gen(function* () {
@@ -34,8 +41,7 @@ const paths = Effect.fn("dev.paths")(function* (name: string) {
 const readState = Effect.fn("dev.readState")(function* (file: string) {
   const fs = yield* FileSystem.FileSystem;
   return yield* fs.readFileString(file).pipe(
-    Effect.flatMap(Schema.decodeEffect(Schema.UnknownFromJsonString)),
-    Effect.map((value) => value as DevState),
+    Effect.flatMap(Schema.decodeEffect(DevStateJson)),
     Effect.option,
     Effect.map((option) => (option._tag === "Some" ? option.value : undefined)),
   );
@@ -143,10 +149,7 @@ export const runDev = Effect.fn("dev.run")(function* (cwd: string, override?: st
           command: tasks[index]?.command ?? "",
         })),
       };
-      yield* fs.writeFileString(
-        location.state,
-        yield* Schema.encodeEffect(Schema.UnknownFromJsonString)(state),
-      );
+      yield* fs.writeFileString(location.state, yield* Schema.encodeEffect(DevStateJson)(state));
       return handles;
     }),
   );
