@@ -1,5 +1,5 @@
 {
-  "name": "@yard/cli",
+  "name": "@stupremee/yard",
   "version": "0.1.0",
   "description": "Manage isolated development stacks for AI-assisted projects",
   "keywords": [

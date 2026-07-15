@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-Security fixes are provided for the latest published version of `@yard/cli`.
+Security fixes are provided for the latest published version of `@stupremee/yard`.
 
 ## Reporting a vulnerability
 

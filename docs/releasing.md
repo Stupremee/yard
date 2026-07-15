@@ -1,4 +1,4 @@
-# Releasing `@yard/cli`
+# Releasing `@stupremee/yard`
 
 Releases use protected version tags, a GitHub Environment, and npm trusted publishing with OIDC. No long-lived npm token is used after the one-time bootstrap.
 
@@ -15,7 +15,7 @@ Releases use protected version tags, a GitHub Environment, and npm trusted publi
 npm requires a package to exist before a trusted publisher can be attached. The first `0.1.0` release is therefore published manually.
 
 1. Merge the publishing setup into `main` and check out that exact commit locally.
-2. Authenticate to npm with an account that can create packages in the `@yard` organization and has 2FA enabled.
+2. Authenticate to npm as `stupremee` with 2FA enabled.
 3. Validate, build, and inspect the exact tarball:
 
    ```bash
@@ -34,7 +34,7 @@ npm requires a package to exist before a trusted publisher can be attached. The 
 
    ```bash
    SMOKE_PREFIX="$(mktemp -d)"
-   vp exec npm install --global --prefix "$SMOKE_PREFIX" ./yard-cli-0.1.0.tgz
+   vp exec npm install --global --prefix "$SMOKE_PREFIX" ./stupremee-yard-0.1.0.tgz
    "$SMOKE_PREFIX/bin/yard" --version
    "$SMOKE_PREFIX/bin/yard" --help
    ```
@@ -42,10 +42,10 @@ npm requires a package to exist before a trusted publisher can be attached. The 
 5. Publish that same inspected tarball:
 
    ```bash
-   vp exec npm publish ./yard-cli-0.1.0.tgz
+   vp exec npm publish ./stupremee-yard-0.1.0.tgz
    ```
 
-6. Verify that `@yard/cli@0.1.0` is public.
+6. Verify that `@stupremee/yard@0.1.0` is public.
 7. Configure npm trusted publishing as described below.
 8. Create and push the initial annotated tag from the same commit:
 
@@ -58,7 +58,7 @@ The publish workflow intentionally skips npm for `v0.1.0`, because that version 
 
 ## Enable npm trusted publishing
 
-After `@yard/cli` exists, open its settings on npmjs.com and add this trusted publisher:
+After `@stupremee/yard` exists, open its settings on npmjs.com and add this trusted publisher:
 
 | Setting              | Value          |
 | -------------------- | -------------- |

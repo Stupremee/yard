@@ -1,7 +1,7 @@
 # yard
 
 [![CI](https://github.com/Stupremee/yard/actions/workflows/ci.yml/badge.svg)](https://github.com/Stupremee/yard/actions/workflows/ci.yml)
-[![npm](https://img.shields.io/npm/v/%40yard%2Fcli)](https://www.npmjs.com/package/@yard/cli)
+[![npm](https://img.shields.io/npm/v/%40stupremee%2Fyard)](https://www.npmjs.com/package/@stupremee/yard)
 [![license](https://img.shields.io/npm/l/%40yard%2Fcli)](LICENSE)
 
 `yard` is a lightweight CLI for managing development stacks for AI-assisted projects. Each project, branch, or worktree can run its own named stack without manually tracking child processes.
@@ -16,7 +16,7 @@
 ## Installation
 
 ```bash
-npm install --global @yard/cli
+npm install --global @stupremee/yard
 ```
 
 The package installs the `yard` command.

@@ -72,6 +72,6 @@ jobs:
 
       - name: Smoke-test installed package
         run: |
-          vp exec npm install --global --prefix "$RUNNER_TEMP/yard-smoke" ./yard-cli-*.tgz
+          vp exec npm install --global --prefix "$RUNNER_TEMP/yard-smoke" ./stupremee-yard-*.tgz
           "$RUNNER_TEMP/yard-smoke/bin/yard" --version
           "$RUNNER_TEMP/yard-smoke/bin/yard" --help

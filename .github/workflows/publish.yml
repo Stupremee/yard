@@ -61,13 +61,13 @@ jobs:
       - name: Verify bootstrapped npm artifact
         if: github.ref_name == 'v0.1.0'
         run: |
-          registry_integrity="$(vp exec npm view @yard/cli@0.1.0 dist.integrity)"
-          local_integrity="sha512-$(openssl dgst -sha512 -binary yard-cli-0.1.0.tgz | openssl base64 -A)"
+          registry_integrity="$(vp exec npm view @stupremee/yard@0.1.0 dist.integrity)"
+          local_integrity="sha512-$(openssl dgst -sha512 -binary stupremee-yard-0.1.0.tgz | openssl base64 -A)"
           test "$local_integrity" = "$registry_integrity"
 
       - name: Smoke-test installed package
         run: |
-          vp exec npm install --global --prefix "$RUNNER_TEMP/yard-smoke" ./yard-cli-*.tgz
+          vp exec npm install --global --prefix "$RUNNER_TEMP/yard-smoke" ./stupremee-yard-*.tgz
           "$RUNNER_TEMP/yard-smoke/bin/yard" --version
           "$RUNNER_TEMP/yard-smoke/bin/yard" --help
 
@@ -75,7 +75,7 @@ jobs:
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: npm-package
-          path: yard-cli-*.tgz
+          path: stupremee-yard-*.tgz
           if-no-files-found: error
           retention-days: 7
 
@@ -87,7 +87,7 @@ jobs:
     timeout-minutes: 15
     environment:
       name: npm
-      url: https://www.npmjs.com/package/@yard/cli
+      url: https://www.npmjs.com/package/@stupremee/yard
     permissions:
       contents: read
       id-token: write
@@ -112,10 +112,10 @@ jobs:
           path: artifacts
 
       - name: Verify package artifact
-        run: test -f "artifacts/yard-cli-${GITHUB_REF_NAME#v}.tgz"
+        run: test -f "artifacts/stupremee-yard-${GITHUB_REF_NAME#v}.tgz"
 
       - name: Publish validated artifact with npm trusted publishing
-        run: vp exec npm publish "artifacts/yard-cli-${GITHUB_REF_NAME#v}.tgz"
+        run: vp exec npm publish "artifacts/stupremee-yard-${GITHUB_REF_NAME#v}.tgz"
 
   release:
     name: Create GitHub Release
