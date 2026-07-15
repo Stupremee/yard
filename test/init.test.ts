@@ -1,10 +1,25 @@
 import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
+import * as Formatter from "effect/Formatter";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
 import { discoverDevScripts } from "../src/dev/config.ts";
 import { buildDevDefinition, InitError, runInit } from "../src/dev/init.ts";
+
+const JsonObject = Schema.Record(Schema.String, Schema.Unknown);
+const JsonObjectFromString = Schema.fromJsonString(JsonObject);
+const WrittenPackageJson = Schema.fromJsonString(
+  Schema.Struct({
+    name: Schema.String,
+    "exotic-key": Schema.Struct({ nested: Schema.Boolean }),
+    yard: Schema.Struct({ name: Schema.String, dev: Schema.Unknown }),
+  }),
+);
+const formatJson = (value: typeof JsonObject.Type) =>
+  Formatter.formatJson(value, { space: 2 }) + "\n";
+const decodeJsonObject = Schema.decodeUnknownEffect(JsonObjectFromString);
 
 describe("discoverDevScripts", () => {
   it("returns empty for undefined", () => {
@@ -86,14 +101,10 @@ describe("runInit", () => {
         // Setup minimal package.json with dev:*
         yield* fs.writeFileString(
           dir + "/package.json",
-          JSON.stringify(
-            {
-              name: "demo",
-              scripts: { "dev:web": "vite", build: "tsc" },
-            },
-            null,
-            2,
-          ) + "\n",
+          formatJson({
+            name: "demo",
+            scripts: { "dev:web": "vite", build: "tsc" },
+          }),
         );
 
         // First run: --script dev:web --target yard (non-int)
@@ -134,7 +145,7 @@ describe("runInit", () => {
           private: true,
           yard: { name: "custom" },
         };
-        yield* fs.writeFileString(dir + "/package.json", JSON.stringify(original, null, 2) + "\n");
+        yield* fs.writeFileString(dir + "/package.json", formatJson(original));
 
         const flags = {
           script: ["dev", "dev:web"],
@@ -151,8 +162,7 @@ describe("runInit", () => {
         // preserves exotic
         assert.ok(raw.includes('"exotic-key"'));
         // has yard
-        const parsed = JSON.parse(raw);
-        assert.ok(parsed.yard);
+        const parsed = yield* Schema.decodeUnknownEffect(WrittenPackageJson)(raw);
         assert.ok(parsed.yard.dev);
         assert.strictEqual(parsed.yard.name, "custom");
         // original top level preserved
@@ -167,10 +177,7 @@ describe("runInit", () => {
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
         const dir = yield* fs.makeTempDirectoryScoped();
-        yield* fs.writeFileString(
-          dir + "/package.json",
-          JSON.stringify({ scripts: { dev: "vite" } }) + "\n",
-        );
+        yield* fs.writeFileString(dir + "/package.json", formatJson({ scripts: { dev: "vite" } }));
         yield* fs.writeFileString(dir + "/yard.json", "not json\n");
 
         yield* runInit(dir, {
@@ -180,9 +187,12 @@ describe("runInit", () => {
           force: true,
         });
 
-        assert.deepStrictEqual(JSON.parse(yield* fs.readFileString(dir + "/yard.json")), {
-          dev: "npm run dev",
-        });
+        assert.deepStrictEqual(
+          yield* decodeJsonObject(yield* fs.readFileString(dir + "/yard.json")),
+          {
+            dev: "npm run dev",
+          },
+        );
       }),
     ).pipe(Effect.provide(NodeServices.layer)),
   );
@@ -209,10 +219,7 @@ describe("runInit", () => {
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
         const dir = yield* fs.makeTempDirectoryScoped();
-        yield* fs.writeFileString(
-          dir + "/package.json",
-          JSON.stringify({ scripts: { dev: "x" } }) + "\n",
-        );
+        yield* fs.writeFileString(dir + "/package.json", formatJson({ scripts: { dev: "x" } }));
         const err = yield* runInit(dir, {
           script: ["dev:ghost"],
           target: Option.none(),
@@ -230,10 +237,7 @@ describe("runInit", () => {
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
         const dir = yield* fs.makeTempDirectoryScoped();
-        yield* fs.writeFileString(
-          dir + "/package.json",
-          JSON.stringify({ scripts: { build: "tsc" } }) + "\n",
-        );
+        yield* fs.writeFileString(dir + "/package.json", formatJson({ scripts: { build: "tsc" } }));
         const err = yield* runInit(dir, {
           script: [],
           target: Option.none(),

@@ -1,0 +1,139 @@
+name: Publish
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions: {}
+
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate release
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Check out tag
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          fetch-depth: 0
+
+      - name: Require a commit from main
+        run: git merge-base --is-ancestor HEAD origin/main
+
+      - name: Set up Vite+
+        uses: voidzero-dev/setup-vp@250f29ce396baf5e8f24498e17c0dfdebabc26eb # v1
+        with:
+          node-version: "24"
+          cache: false
+          run-install: true
+
+      - name: Verify tag matches package version
+        run: test "$GITHUB_REF_NAME" = "v$(node -p "require('./package.json').version")"
+
+      - name: Set up project diagnostics
+        run: vp run setup
+
+      - name: Check formatting, lint, and types
+        run: vp check
+
+      - name: Run Effect diagnostics
+        run: vp run typecheck
+
+      - name: Run tests
+        run: vp run test
+
+      - name: Build package
+        run: vp run build:bundle
+
+      - name: Inspect package contents
+        run: vp run check:package
+
+      - name: Create package tarball
+        run: vp run pack:package
+
+      - name: Verify bootstrapped npm artifact
+        if: github.ref_name == 'v0.1.0'
+        run: |
+          registry_integrity="$(vp exec npm view @yard/cli@0.1.0 dist.integrity)"
+          local_integrity="sha512-$(openssl dgst -sha512 -binary yard-cli-0.1.0.tgz | openssl base64 -A)"
+          test "$local_integrity" = "$registry_integrity"
+
+      - name: Smoke-test installed package
+        run: |
+          vp exec npm install --global --prefix "$RUNNER_TEMP/yard-smoke" ./yard-cli-*.tgz
+          "$RUNNER_TEMP/yard-smoke/bin/yard" --version
+          "$RUNNER_TEMP/yard-smoke/bin/yard" --help
+
+      - name: Upload package tarball
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: npm-package
+          path: yard-cli-*.tgz
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish to npm
+    if: github.ref_name != 'v0.1.0'
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: npm
+      url: https://www.npmjs.com/package/@yard/cli
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Check out tagged commit
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Set up Vite+
+        uses: voidzero-dev/setup-vp@250f29ce396baf5e8f24498e17c0dfdebabc26eb # v1
+        with:
+          node-version: "24"
+          cache: false
+          registry-url: https://registry.npmjs.org
+          run-install: false
+
+      - name: Download validated package
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: npm-package
+          path: artifacts
+
+      - name: Verify package artifact
+        run: test -f "artifacts/yard-cli-${GITHUB_REF_NAME#v}.tgz"
+
+      - name: Publish validated artifact with npm trusted publishing
+        run: vp exec npm publish "artifacts/yard-cli-${GITHUB_REF_NAME#v}.tgz"
+
+  release:
+    name: Create GitHub Release
+    if: >-
+      always() &&
+      needs.validate.result == 'success' &&
+      (needs.publish.result == 'success' ||
+      (github.ref_name == 'v0.1.0' && needs.publish.result == 'skipped'))
+    needs: [validate, publish]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 ||
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag
+          --generate-notes --title "$GITHUB_REF_NAME"

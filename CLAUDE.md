@@ -23,7 +23,7 @@ NEVER call `pnpm`, `npm`, `npx`, `vite`, or `vitest` directly -- always go throu
 
 `vp build` (the Vite app build) does not apply to this CLI package; the production build is `vp pack` (config lives in `vite.config.ts` under the `pack` block).
 
-Build-time Effect diagnostics come from `@effect/tsgo` (patched tsgo binary, applied by the `prepare` script); pre-commit hooks run `vp check --fix` on staged files via the `staged` block in `vite.config.ts`.
+Build-time Effect diagnostics come from `@effect/tsgo`. Run `vp run setup` after installing dependencies to patch tsgo and configure Vite+ without adding agent files. Pre-commit hooks run `vp check --fix` on staged files via the `staged` block in `vite.config.ts`.
 
 <!-- effect-solutions:start -->
 

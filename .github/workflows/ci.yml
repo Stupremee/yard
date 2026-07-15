@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: Set up Vite+
+        uses: voidzero-dev/setup-vp@250f29ce396baf5e8f24498e17c0dfdebabc26eb # v1
+        with:
+          node-version: "24"
+          cache: true
+          run-install: true
+
+      - name: Set up project diagnostics
+        run: vp run setup
+
+      - name: Check formatting, lint, and types
+        run: vp check
+
+      - name: Run Effect diagnostics
+        run: vp run typecheck
+
+      - name: Run tests
+        run: vp run test
+
+  package:
+    name: Package
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: Set up Vite+
+        uses: voidzero-dev/setup-vp@250f29ce396baf5e8f24498e17c0dfdebabc26eb # v1
+        with:
+          node-version: "24"
+          cache: true
+          run-install: true
+
+      - name: Build package
+        run: vp run build:bundle
+
+      - name: Inspect package contents
+        run: vp run check:package
+
+      - name: Create package tarball
+        run: vp run pack:package
+
+      - name: Smoke-test installed package
+        run: |
+          vp exec npm install --global --prefix "$RUNNER_TEMP/yard-smoke" ./yard-cli-*.tgz
+          "$RUNNER_TEMP/yard-smoke/bin/yard" --version
+          "$RUNNER_TEMP/yard-smoke/bin/yard" --help

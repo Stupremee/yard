@@ -218,10 +218,10 @@ importers:
   .:
     dependencies:
       '@effect/platform-node':
-        specifier: ^4.0.0-beta.93
+        specifier: 4.0.0-beta.93
         version: 4.0.0-beta.93(effect@4.0.0-beta.93)(ioredis@5.11.1)
       effect:
-        specifier: ^4.0.0-beta.93
+        specifier: 4.0.0-beta.93
         version: 4.0.0-beta.93
     devDependencies:
       '@effect/tsgo':
@@ -229,7 +229,7 @@ importers:
         version: 0.16.0
       '@effect/vitest':
         specifier: 4.0.0-beta.93
-        version: 4.0.0-beta.93(effect@4.0.0-beta.93)(vitest@4.1.9)
+        version: 4.0.0-beta.93(effect@4.0.0-beta.93)(vitest@4.1.9(@types/node@26.1.0)(@vitest/browser-preview@4.1.9)(@voidzero-dev/vite-plus-core@0.2.2(@types/node@26.1.0)(typescript@6.0.3)(yaml@2.9.0)))
       '@types/node':
         specifier: ^26.1.0
         version: 26.1.0
@@ -1355,7 +1355,7 @@ snapshots:
       '@effect/tsgo-win32-arm64': 0.16.0
       '@effect/tsgo-win32-x64': 0.16.0
 
-  '@effect/vitest@4.0.0-beta.93(effect@4.0.0-beta.93)(vitest@4.1.9)':
+  '@effect/vitest@4.0.0-beta.93(effect@4.0.0-beta.93)(vitest@4.1.9(@types/node@26.1.0)(@vitest/browser-preview@4.1.9)(@voidzero-dev/vite-plus-core@0.2.2(@types/node@26.1.0)(typescript@6.0.3)(yaml@2.9.0)))':
     dependencies:
       effect: 4.0.0-beta.93
       vitest: 4.1.9(@types/node@26.1.0)(@vitest/browser-preview@4.1.9)(@voidzero-dev/vite-plus-core@0.2.2(@types/node@26.1.0)(typescript@6.0.3)(yaml@2.9.0))

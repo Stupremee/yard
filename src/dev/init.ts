@@ -2,6 +2,7 @@ import * as Console from "effect/Console";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
+import * as Formatter from "effect/Formatter";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Prompt from "effect/unstable/cli/Prompt";
@@ -59,7 +60,7 @@ const updateJsonFile = Effect.fn("dev.init.updateJsonFile")(function* (
       ? yield* decoded.pipe(Effect.orElseSucceed(() => ({})))
       : yield* decoded;
   }
-  yield* fs.writeFileString(file, JSON.stringify(update(current), null, 2) + "\n");
+  yield* fs.writeFileString(file, Formatter.formatJson(update(current), { space: 2 }) + "\n");
 });
 
 export const runInit = Effect.fn("dev.init")(function* (cwd: string, flags: InitFlags) {
@@ -72,12 +73,11 @@ export const runInit = Effect.fn("dev.init")(function* (cwd: string, flags: Init
       return yield* new InitError({ message: `No package.json found in ${cwd}` });
     }
     const pkg = yield* loadPackageJson(cwd).pipe(
-      Effect.catch((err) =>
-        Effect.fail(
+      Effect.mapError(
+        (err) =>
           new InitError({
             message: `Failed to parse package.json: ${err instanceof Error ? err.message : String(err)}`,
           }),
-        ),
       ),
     );
 
