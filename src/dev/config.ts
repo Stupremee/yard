@@ -17,14 +17,14 @@ export const YardConfig = Schema.Struct({
 });
 export type YardConfig = typeof YardConfig.Type;
 
-const PackageJson = Schema.Struct({
+export const PackageJson = Schema.Struct({
   name: Schema.optionalKey(Schema.String),
   scripts: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
   dependencies: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
   devDependencies: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
   yard: Schema.optionalKey(Schema.Unknown),
 });
-type PackageJson = typeof PackageJson.Type;
+export type PackageJson = typeof PackageJson.Type;
 
 export class NoDevTasksError extends Data.TaggedError("NoDevTasksError")<{
   readonly message: string;
@@ -38,11 +38,13 @@ const readJsonFile = Effect.fn("dev.readJsonFile")(function* <S extends Schema.T
   return yield* Schema.decodeEffect(Schema.fromJsonString(schema))(yield* fs.readFileString(file));
 });
 
-const packageJson = Effect.fn("dev.packageJson")(function* (cwd: string) {
+export const loadPackageJson = Effect.fn("dev.loadPackageJson")(function* (cwd: string) {
   const path = yield* Path.Path;
-  return yield* readJsonFile(path.join(cwd, "package.json"), PackageJson).pipe(
-    Effect.orElseSucceed((): PackageJson => ({})),
-  );
+  return yield* readJsonFile(path.join(cwd, "package.json"), PackageJson);
+});
+
+const packageJson = Effect.fn("dev.packageJson")(function* (cwd: string) {
+  return yield* loadPackageJson(cwd).pipe(Effect.orElseSucceed((): PackageJson => ({})));
 });
 
 const yardConfig = Effect.fn("dev.yardConfig")(function* (cwd: string, pkg: PackageJson) {
@@ -61,6 +63,26 @@ export const commandLabel = (command: string): string => {
   if (words.length >= 2 && ["npm", "pnpm", "yarn", "bun", "vp"].includes(words[0] ?? ""))
     return words[1] ?? "dev";
   return words[0] || "dev";
+};
+
+export type DevScript = { readonly script: string; readonly label: string; readonly body: string };
+
+export const discoverDevScripts = (
+  scripts: Record<string, string> | undefined,
+): Array<DevScript> => {
+  if (!scripts) return [];
+  const result: DevScript[] = [];
+  if (scripts.dev !== undefined) {
+    result.push({ script: "dev", label: "dev", body: scripts.dev });
+  }
+  for (const [key, body] of Object.entries(scripts)) {
+    if (key === "dev") continue;
+    if (key.startsWith("dev:")) {
+      const label = key === "dev:dev" ? key : key.slice(4);
+      result.push({ script: key, label, body });
+    }
+  }
+  return result;
 };
 
 export const detectPackageManager = Effect.fn("dev.detectPackageManager")(function* (cwd: string) {
