@@ -78,7 +78,7 @@ export const discoverDevScripts = (
   for (const [key, body] of Object.entries(scripts)) {
     if (key === "dev") continue;
     if (key.startsWith("dev:")) {
-      const label = key.slice(4);
+      const label = key === "dev:dev" ? key : key.slice(4);
       result.push({ script: key, label, body });
     }
   }

@@ -43,15 +43,22 @@ export const buildDevDefinition = (
   return rec;
 };
 
+const JsonObject = Schema.Record(Schema.String, Schema.Unknown);
+
 const updateJsonFile = Effect.fn("dev.init.updateJsonFile")(function* (
   file: string,
   update: (current: Record<string, unknown>) => Record<string, unknown>,
+  replaceInvalid = false,
 ) {
   const fs = yield* FileSystem.FileSystem;
-  const RawJson = Schema.fromJsonString(Schema.Record(Schema.String, Schema.Unknown));
-  const current = (yield* fs.exists(file))
-    ? yield* Schema.decodeEffect(RawJson)(yield* fs.readFileString(file))
-    : {};
+  const RawJson = Schema.fromJsonString(JsonObject);
+  let current: Record<string, unknown> = {};
+  if (yield* fs.exists(file)) {
+    const decoded = Schema.decodeEffect(RawJson)(yield* fs.readFileString(file));
+    current = replaceInvalid
+      ? yield* decoded.pipe(Effect.orElseSucceed(() => ({})))
+      : yield* decoded;
+  }
   yield* fs.writeFileString(file, JSON.stringify(update(current), null, 2) + "\n");
 });
 
@@ -65,7 +72,7 @@ export const runInit = Effect.fn("dev.init")(function* (cwd: string, flags: Init
       return yield* new InitError({ message: `No package.json found in ${cwd}` });
     }
     const pkg = yield* loadPackageJson(cwd).pipe(
-      Effect.catchAll((err) =>
+      Effect.catch((err) =>
         Effect.fail(
           new InitError({
             message: `Failed to parse package.json: ${err instanceof Error ? err.message : String(err)}`,
@@ -175,9 +182,12 @@ export const runInit = Effect.fn("dev.init")(function* (cwd: string, flags: Init
 
     // 8. Write
     if (targetChoice === "package") {
-      yield* updateJsonFile(pkgFile, (o) => ({ ...o, yard: { dev } }));
+      yield* updateJsonFile(pkgFile, (o) => ({
+        ...o,
+        yard: { ...(Schema.is(JsonObject)(o.yard) ? o.yard : {}), dev },
+      }));
     } else {
-      yield* updateJsonFile(yardFile, (o) => ({ ...o, dev }));
+      yield* updateJsonFile(yardFile, (o) => ({ ...o, dev }), flags.force);
     }
 
     // 9. Summary

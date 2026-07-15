@@ -37,6 +37,14 @@ describe("discoverDevScripts", () => {
     assert.strictEqual(res[1]!.script, "dev:api");
     assert.strictEqual(res[2]!.script, "dev:web");
   });
+
+  it("keeps labels unique for dev and dev:dev", () => {
+    const res = discoverDevScripts({ dev: "vite", "dev:dev": "node server" });
+    assert.deepStrictEqual(
+      res.map(({ label }) => label),
+      ["dev", "dev:dev"],
+    );
+  });
 });
 
 describe("buildDevDefinition", () => {
@@ -124,6 +132,7 @@ describe("runInit", () => {
           scripts: { dev: "node index.js", "dev:web": "vite" },
           "exotic-key": { nested: true },
           private: true,
+          yard: { name: "custom" },
         };
         yield* fs.writeFileString(dir + "/package.json", JSON.stringify(original, null, 2) + "\n");
 
@@ -131,7 +140,7 @@ describe("runInit", () => {
           script: ["dev", "dev:web"],
           target: Option.some("package" as const),
           yes: false,
-          force: false,
+          force: true,
         };
         yield* runInit(dir, flags);
 
@@ -145,9 +154,35 @@ describe("runInit", () => {
         const parsed = JSON.parse(raw);
         assert.ok(parsed.yard);
         assert.ok(parsed.yard.dev);
+        assert.strictEqual(parsed.yard.name, "custom");
         // original top level preserved
         assert.strictEqual(parsed.name, "exotic");
         assert.strictEqual(parsed["exotic-key"].nested, true);
+      }),
+    ).pipe(Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect("force replaces a malformed yard.json", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const dir = yield* fs.makeTempDirectoryScoped();
+        yield* fs.writeFileString(
+          dir + "/package.json",
+          JSON.stringify({ scripts: { dev: "vite" } }) + "\n",
+        );
+        yield* fs.writeFileString(dir + "/yard.json", "not json\n");
+
+        yield* runInit(dir, {
+          script: ["dev"],
+          target: Option.some("yard" as const),
+          yes: false,
+          force: true,
+        });
+
+        assert.deepStrictEqual(JSON.parse(yield* fs.readFileString(dir + "/yard.json")), {
+          dev: "npm run dev",
+        });
       }),
     ).pipe(Effect.provide(NodeServices.layer)),
   );
